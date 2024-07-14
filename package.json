@@ -11,6 +11,9 @@
   "author": "",
   "description": "",
   "type": "module",
+  "imports": {
+    "#src/*.js": "./dist/*.js"
+  },
   "devDependencies": {
     "@tsconfig/node22": "^22.0.0",
     "@tsconfig/recommended": "^1.0.7",

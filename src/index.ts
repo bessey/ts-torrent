@@ -1,7 +1,7 @@
 import { program } from "commander";
 import fs from "fs/promises";
 
-import { buildMetainfo } from "./torrentFile.js";
+import { buildMetainfo } from "#src/torrentFile.js";
 
 program.parse();
 
