@@ -55,23 +55,23 @@ every(10, async () => {
     if (i >= neededPeers) break;
     if (peerConn.lastErrorAt && Date.now() - peerConn.lastErrorAt < 60000)
       continue;
-    peerConn.connect(
+    peerConn.connect({
       config,
       metainfo,
-      () => {
+      onConnecting() {
         appState.activePeers.add(peerConn);
         appState.availablePeers.delete(peerConn) ||
           appState.ignoredPeers.delete(peerConn);
       },
-      () => {
+      onDisconnect() {
         if (appState.activePeers.delete(peerConn))
           appState.availablePeers.add(peerConn);
       },
-      () => {
+      onError() {
         appState.activePeers.delete(peerConn);
         appState.ignoredPeers.add(peerConn);
-      }
-    );
+      },
+    });
     i++;
   }
   console.log(

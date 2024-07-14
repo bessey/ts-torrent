@@ -7,6 +7,13 @@ export interface Peer {
   port: number;
 }
 
+export interface ConnectArgs {
+  config: Config;
+  metainfo: Metainfo;
+  onConnecting: () => void;
+  onDisconnect: () => void;
+  onError: (err: Error) => void;
+}
 export class PeerConn {
   peer: Peer;
   amChoking: boolean;
@@ -28,13 +35,13 @@ export class PeerConn {
     this.status = "disconnected";
   }
 
-  async connect(
-    config: Config,
-    metainfo: Metainfo,
-    onConnecting: () => void,
-    onDisconnect: () => void,
-    onError: (err: Error) => void
-  ): Promise<net.Socket> {
+  async connect({
+    config,
+    metainfo,
+    onConnecting,
+    onDisconnect,
+    onError,
+  }: ConnectArgs): Promise<net.Socket> {
     const client = new net.Socket();
 
     client.connect(this.peer.port, this.peer.ip, () => {
