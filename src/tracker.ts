@@ -1,14 +1,14 @@
 import bencode from "bencode";
 import type { Config } from "#src/config.js";
 import type { Metainfo } from "#src/torrentFile.js";
-import type { Peer } from "./peer.js";
+import type { PeerInfo } from "./peer.js";
 import { sleep } from "./utils.js";
 
 export interface TrackerResponse {
   complete: number;
   incomplete: number;
   interval: number;
-  peers: Peer[];
+  peers: PeerInfo[];
 }
 
 export async function getTrackerResponse(

@@ -5,8 +5,9 @@ import { randomBytes } from "node:crypto";
 import type { Config } from "#src/config.js";
 import { buildMetainfo } from "#src/torrentFile.js";
 import { getTrackerResponse } from "#src/tracker.js";
-import { PeerConn } from "#src/peer.js";
+import { PeerState } from "#src/peer.js";
 import { every } from "./utils.js";
+import { Bitfield } from "./bitfield.js";
 
 program.parse();
 
@@ -22,7 +23,7 @@ const config: Config = {
   downloadsDirectory: "./downloads/",
   port: 6881,
   peerId: randomBytes(20),
-  desiredPeers: 10,
+  desiredPeers: 30,
 };
 
 const data = await fs.readFile(download.filePath);
@@ -33,18 +34,22 @@ const trackerData = await getTrackerResponse(config, metainfo);
 
 console.log(trackerData);
 
-const peerConns = trackerData.peers.map((peer) => new PeerConn(peer));
+const peerConns = trackerData.peers.map((peer) => new PeerState(peer));
 
 interface AppState {
-  activePeers: Set<PeerConn>;
-  availablePeers: Set<PeerConn>;
-  ignoredPeers: Set<PeerConn>;
+  availablePeers: Set<PeerState>;
+  activePeers: Set<PeerState>;
+  ignoredPeers: Set<PeerState>;
+  bitfield: Bitfield;
 }
 
 const appState: AppState = {
-  activePeers: new Set(),
   availablePeers: new Set(peerConns),
+  activePeers: new Set(),
   ignoredPeers: new Set(),
+  bitfield: new Bitfield(
+    Buffer.alloc(Math.ceil(metainfo.totalLength() / metainfo.info.pieceLength))
+  ),
 };
 
 every(10, async () => {
@@ -77,4 +82,13 @@ every(10, async () => {
   console.log(
     `New connections attempted. Active: ${appState.activePeers.size}, Available: ${appState.availablePeers.size}, Ignored: ${appState.ignoredPeers.size}`
   );
+});
+
+every(5000, async () => {
+  const desiredPiece = 1000;
+  for (const p of appState.activePeers) {
+    if (p.bitfield === null) continue;
+    if (!p.bitfield.has(desiredPiece)) continue;
+    return p.requestPiece(metainfo, desiredPiece);
+  }
 });
