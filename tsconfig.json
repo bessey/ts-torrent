@@ -7,6 +7,12 @@
   "include": ["src/**/*"],
   "exclude": ["**/*.spec.ts"],
   "compilerOptions": {
-    "outDir": "dist"
-  }
+    "outDir": "dist",
+    "baseUrl": "./",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+    }
+  },
 }

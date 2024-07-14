@@ -1,4 +1,7 @@
 import { program } from "commander";
+import fs from "fs/promises";
+
+import { buildMetainfo } from "./torrentFile.js";
 
 program.parse();
 
@@ -11,11 +14,15 @@ interface Config {
 }
 
 const download: Download = {
-  filePath: "./ubuntu-24.04-desktop-amd64.iso.torrent",
+  filePath: "./test/ubuntu-24.04-desktop-amd64.iso.torrent",
 };
 
 const config: Config = {
   downloadsDirectory: "./downloads/",
 };
 
-console.log("Hello world");
+const data = await fs.readFile(download.filePath);
+
+const metainfo = buildMetainfo(data);
+console.log("HELLO!");
+console.log(metainfo);
