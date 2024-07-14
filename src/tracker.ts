@@ -4,7 +4,7 @@ import type { Metainfo } from "#src/torrentFile.js";
 import { sleep } from "./utils.js";
 
 export interface Peer {
-  id: Uint8Array;
+  id: Uint8Array | null;
   ip: string;
   port: number;
 }
@@ -51,6 +51,7 @@ export async function getTrackerResponse(
   const body = await response.arrayBuffer();
 
   const decoded = bencode.decode(Buffer.from(body));
+  console.log(decoded);
 
   return {
     complete: decoded.complete,

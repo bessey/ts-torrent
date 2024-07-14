@@ -6,6 +6,7 @@ import type { Config } from "#src/config.js";
 import { buildMetainfo } from "#src/torrentFile.js";
 import { getTrackerResponse } from "#src/tracker.js";
 import { PeerConn } from "#src/peer.js";
+import { every } from "./utils.js";
 
 program.parse();
 
@@ -14,13 +15,14 @@ interface Download {
 }
 
 const download: Download = {
-  filePath: "./test/ubuntu-24.04-desktop-amd64.iso.torrent",
+  filePath: "./test/debian-12.6.0-arm64-netinst.iso.torrent",
 };
 
 const config: Config = {
   downloadsDirectory: "./downloads/",
   port: 6881,
   peerId: randomBytes(20),
+  desiredPeers: 10,
 };
 
 const data = await fs.readFile(download.filePath);
@@ -33,12 +35,43 @@ console.log(trackerData);
 
 const peerConns = trackerData.peers.map((peer) => new PeerConn(peer));
 
-const desiredPeers = 10;
-
-const activePeers = [];
-
-for (const peerConn of peerConns.slice(0, desiredPeers - activePeers.length)) {
-  await peerConn.connect();
-  peerConn.handshake(metainfo);
-  activePeers.push(peerConn);
+interface AppState {
+  activePeers: Set<PeerConn>;
+  availablePeers: Set<PeerConn>;
+  ignoredPeers: Set<PeerConn>;
 }
+
+const appState: AppState = {
+  activePeers: new Set(),
+  availablePeers: new Set(peerConns),
+  ignoredPeers: new Set(),
+};
+
+every(500, async () => {
+  const neededPeers = config.desiredPeers - appState.activePeers.size;
+  let i = 0;
+  for (const peerConn of appState.availablePeers) {
+    if (i >= neededPeers) break;
+    if (peerConn.lastErrorAt && Date.now() - peerConn.lastErrorAt < 60000)
+      continue;
+    peerConn.connect(
+      config,
+      metainfo,
+      () => {
+        appState.activePeers.add(peerConn);
+        appState.availablePeers.delete(peerConn) ||
+          appState.ignoredPeers.delete(peerConn);
+      },
+      () => {
+        if (appState.activePeers.delete(peerConn))
+          appState.availablePeers.add(peerConn);
+      },
+      () => {
+        appState.activePeers.delete(peerConn);
+        appState.ignoredPeers.add(peerConn);
+      }
+    );
+    i++;
+  }
+  console.log("APP STATE TICK", appState);
+});

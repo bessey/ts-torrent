@@ -2,6 +2,7 @@ import type { Peer } from "#src/tracker.js";
 import type { Metainfo } from "#src/torrentFile.js";
 
 import net from "node:net";
+import { Config } from "./config.js";
 
 export class PeerConn {
   peer: Peer;
@@ -24,29 +25,39 @@ export class PeerConn {
     this.status = "disconnected";
   }
 
-  async connect(): Promise<net.Socket> {
+  async connect(
+    config: Config,
+    metainfo: Metainfo,
+    onConnecting: () => void,
+    onDisconnect: () => void,
+    onError: (err: Error) => void
+  ): Promise<net.Socket> {
     const client = new net.Socket();
 
     client.connect(this.peer.port, this.peer.ip, () => {
-      this.#log("connecting");
-      this.status = "connecting";
+      this.#log("connected");
+      this.status = "connected";
+      this.handshake(config, metainfo);
     });
+    this.#log("connecting");
+    this.status = "connecting";
+    onConnecting();
 
     client.on("data", (data) => {
       this.#log("data", Buffer.from(data).toString("ascii"));
-      this.status = "connected";
     });
     client.on("error", (err) => {
       this.#log("error", err);
       this.lastErrorAt = Date.now();
+      onError(err);
     });
     client.on("close", () => {
       this.#log("closed");
       this.status = "disconnected";
+      onDisconnect();
     });
     client.on("timeout", () => {
       this.#log("timeout");
-      this.status = "disconnected";
       client.destroy();
     });
 
@@ -54,19 +65,18 @@ export class PeerConn {
     return client;
   }
 
-  handshake(metainfo: Metainfo): void {
-    const handshake = this.#handshakeMessage(metainfo);
+  handshake(config: Config, metainfo: Metainfo): void {
+    const handshake = this.#handshakeMessage(config, metainfo);
     this.client?.write(handshake);
   }
 
-  #handshakeMessage(metainfo: Metainfo): Buffer {
+  #handshakeMessage(config: Config, metainfo: Metainfo): Buffer {
     const pstrlen = Buffer.from([19]);
     const pstr = Buffer.from("BitTorrent protocol");
     const reserved = Buffer.alloc(8);
     const infoHash = metainfo.infoHash;
-    const peerId = this.peer.id;
 
-    return Buffer.concat([pstrlen, pstr, reserved, infoHash, peerId]);
+    return Buffer.concat([pstrlen, pstr, reserved, infoHash, config.peerId]);
   }
 
   #log(message: string, ...rest: any): void {
