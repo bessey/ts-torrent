@@ -1,26 +1,26 @@
 import bencode from "bencode";
 import crypto from "crypto";
 
-interface Metainfo {
+export interface Metainfo {
   announce: string;
   announceList?: string[][];
   info: SingleFileInfo | MultiFileInfo;
   infoHash: string;
 }
 
-interface FileInfo {
+export interface FileInfo {
   pieceLength: number;
   pieces: string;
   private?: 0 | 1;
 }
 
-interface SingleFileInfo extends FileInfo {
+export interface SingleFileInfo extends FileInfo {
   length: number;
   name: string;
   md5sum?: string;
 }
 
-interface MultiFileInfo extends FileInfo {
+export interface MultiFileInfo extends FileInfo {
   files: {
     length: number;
     md5sum?: string;
