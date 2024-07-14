@@ -1,0 +1,23 @@
+{
+  "name": "ts-torrent",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "npx tsc",
+    "watch": "npx tsc --watch",
+    "dev": "concurrently \"npm run watch\" \"node --watch dist/index.js\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "description": "",
+  "type": "module",
+  "devDependencies": {
+    "@tsconfig/node22": "^22.0.0",
+    "@tsconfig/recommended": "^1.0.7",
+    "@tsconfig/strictest": "^2.0.5",
+    "typescript": "^5.5.3"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
