@@ -4,7 +4,7 @@ import { program } from "commander";
 import { randomBytes } from "node:crypto";
 import type { Config } from "#src/config.js";
 import { buildMetainfo } from "#src/torrentFile.js";
-import { trackerRequest } from "#src/tracker.js";
+import { getTrackerResponse } from "#src/tracker.js";
 
 program.parse();
 
@@ -28,4 +28,6 @@ const metainfo = buildMetainfo(data);
 console.log("HELLO!");
 console.log(metainfo);
 
-await trackerRequest(config, metainfo);
+const response = await getTrackerResponse(config, metainfo);
+
+console.log(response);

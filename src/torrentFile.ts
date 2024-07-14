@@ -29,12 +29,11 @@ export interface MultiFileInfo extends FileInfo {
   };
 }
 
-function buildInfoHash(info: unknown): string {
+function buildInfoHash(info: unknown): Buffer {
   const encodedInfo = bencode.encode(info);
   const hash = crypto.createHash("sha1");
   hash.update(encodedInfo);
-  return "%2a%a4%f5%a7%e2%09%e5%4b%32%80%3d%43%67%09%71%c4%c8%ca%aa%05";
-  // return hash.digest("binary");
+  return hash.digest();
 }
 
 export function buildMetainfo(data: Buffer): Metainfo {
