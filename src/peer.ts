@@ -1,8 +1,11 @@
-import type { Peer } from "#src/tracker.js";
 import type { Metainfo } from "#src/torrentFile.js";
+import type { Config } from "./config.js";
 
 import net from "node:net";
-import { Config } from "./config.js";
+export interface Peer {
+  ip: string;
+  port: number;
+}
 
 export class PeerConn {
   peer: Peer;

@@ -47,8 +47,9 @@ const appState: AppState = {
   ignoredPeers: new Set(),
 };
 
-every(500, async () => {
+every(10, async () => {
   const neededPeers = config.desiredPeers - appState.activePeers.size;
+  if (neededPeers <= 0) return;
   let i = 0;
   for (const peerConn of appState.availablePeers) {
     if (i >= neededPeers) break;
@@ -73,5 +74,7 @@ every(500, async () => {
     );
     i++;
   }
-  console.log("APP STATE TICK", appState);
+  console.log(
+    `New connections attempted. Active: ${appState.activePeers.size}, Available: ${appState.availablePeers.size}, Ignored: ${appState.ignoredPeers.size}`
+  );
 });

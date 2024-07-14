@@ -1,13 +1,8 @@
 import bencode from "bencode";
 import type { Config } from "#src/config.js";
 import type { Metainfo } from "#src/torrentFile.js";
+import type { Peer } from "./peer.js";
 import { sleep } from "./utils.js";
-
-export interface Peer {
-  id: Uint8Array | null;
-  ip: string;
-  port: number;
-}
 
 export interface TrackerResponse {
   complete: number;
@@ -51,7 +46,6 @@ export async function getTrackerResponse(
   const body = await response.arrayBuffer();
 
   const decoded = bencode.decode(Buffer.from(body));
-  console.log(decoded);
 
   return {
     complete: decoded.complete,
@@ -59,7 +53,6 @@ export async function getTrackerResponse(
     interval: decoded.interval,
     peers: decoded.peers.map((peer: any) => {
       return {
-        id: peer["peer id"],
         ip: Buffer.from(peer.ip).toString("ascii"),
         port: peer.port,
       };
