@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import type { Config } from "#src/config.js";
 import { buildMetainfo } from "#src/torrentFile.js";
 import { getTrackerResponse } from "#src/tracker.js";
+import { PeerConn } from "#src/peer.js";
 
 program.parse();
 
@@ -19,15 +20,25 @@ const download: Download = {
 const config: Config = {
   downloadsDirectory: "./downloads/",
   port: 6881,
-  peerId: randomBytes(20).toString("ascii"),
+  peerId: randomBytes(20),
 };
 
 const data = await fs.readFile(download.filePath);
 
 const metainfo = buildMetainfo(data);
-console.log("HELLO!");
-console.log(metainfo);
 
-const response = await getTrackerResponse(config, metainfo);
+const trackerData = await getTrackerResponse(config, metainfo);
 
-console.log(response);
+console.log(trackerData);
+
+const peerConns = trackerData.peers.map((peer) => new PeerConn(peer));
+
+const desiredPeers = 10;
+
+const activePeers = [];
+
+for (const peerConn of peerConns.slice(0, desiredPeers - activePeers.length)) {
+  await peerConn.connect();
+  peerConn.handshake(metainfo);
+  activePeers.push(peerConn);
+}

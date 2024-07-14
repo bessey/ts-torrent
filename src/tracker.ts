@@ -1,16 +1,19 @@
 import bencode from "bencode";
 import type { Config } from "#src/config.js";
 import type { Metainfo } from "#src/torrentFile.js";
+import { sleep } from "./utils.js";
+
+export interface Peer {
+  id: Uint8Array;
+  ip: string;
+  port: number;
+}
 
 export interface TrackerResponse {
   complete: number;
   incomplete: number;
   interval: number;
-  peers: {
-    id: string;
-    ip: string;
-    port: number;
-  }[];
+  peers: Peer[];
 }
 
 export async function getTrackerResponse(
@@ -21,7 +24,7 @@ export async function getTrackerResponse(
 
   const announceUrl = new URL(announce);
   const params = {
-    peer_id: config.peerId,
+    peer_id: config.peerId.toString("ascii"),
     port: config.port,
     uploaded: 0,
     downloaded: 0,
@@ -40,6 +43,11 @@ export async function getTrackerResponse(
   const url = `${announceUrl.toString()}&info_hash=${escapedInfoHash}`;
 
   const response = await fetch(url);
+  if (response.status !== 200) {
+    console.log(`Tracker response status ${response.status}, retrying...`);
+    await sleep(500);
+    return getTrackerResponse(config, meta);
+  }
   const body = await response.arrayBuffer();
 
   const decoded = bencode.decode(Buffer.from(body));
@@ -50,8 +58,8 @@ export async function getTrackerResponse(
     interval: decoded.interval,
     peers: decoded.peers.map((peer: any) => {
       return {
-        id: Buffer.from(peer["peer id"]).toString("hex"),
-        ip: peer.ip,
+        id: peer["peer id"],
+        ip: Buffer.from(peer.ip).toString("ascii"),
         port: peer.port,
       };
     }),
