@@ -1,5 +1,5 @@
 export interface Config {
-	downloadsDirectory: string;
-	port: number;
-	peerId: string;
+  downloadsDirectory: string;
+  port: number;
+  peerId: Buffer;
 }
