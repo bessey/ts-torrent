@@ -2,8 +2,16 @@ export class Bitfield {
   bits: Uint8Array;
   progress: number;
 
-  constructor(bits: Uint8Array) {
-    this.bits = bits;
+  constructor(bitCount: number);
+  constructor(bits: Uint8Array);
+  constructor(bitsOrBitCount: Uint8Array | number) {
+    if (bitsOrBitCount instanceof Uint8Array) {
+      this.bits = bitsOrBitCount;
+    } else {
+      if (bitsOrBitCount < 8)
+        throw new Error("Bitfield length must be at least one byte");
+      this.bits = new Uint8Array(Math.ceil(bitsOrBitCount / 8));
+    }
     this.progress = this.totalProgress();
   }
 

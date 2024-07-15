@@ -30,9 +30,12 @@ export class FileManager {
   ): Promise<boolean> {
     let pieceProgress = this.pieceProgress[blockRequest.piece];
     if (pieceProgress === undefined) {
+      const blockCount = Math.ceil(
+        this.metainfo.info.pieceLength / this.config.blockSize
+      );
       pieceProgress = this.pieceProgress[blockRequest.piece] = {
         status: "in-progress",
-        blocks: new Bitfield(Buffer.alloc(data.length)),
+        blocks: new Bitfield(blockCount),
       };
     }
 

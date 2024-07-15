@@ -22,8 +22,7 @@ export class TorrentState {
     this.ignoredPeers = new Set();
     this.requestsInFlight = new Map();
     this.fileManager = new FileManager(config, metainfo);
-    const emptyBitfield = Buffer.alloc(metainfo.info.pieceHashes.length);
-    this.bitfield = new Bitfield(emptyBitfield);
+    this.bitfield = new Bitfield(metainfo.info.pieceHashes.length);
   }
 
   peerConnected(peer: PeerState) {

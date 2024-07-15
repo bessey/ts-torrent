@@ -14,7 +14,7 @@ export interface CallbackArgs {
   onConnecting: () => void;
   onDisconnect: () => void;
   onError: (err: Error) => void;
-  onPieceBlock: (blockRequest: BlockRequest, data: Buffer) => void;
+  onPieceBlock: (blockRequest: BlockRequest, data: Buffer) => Promise<void>;
 }
 
 export class PeerState {
@@ -62,9 +62,9 @@ export class PeerState {
     this.status = "connecting";
     callbacks.onConnecting();
 
-    client.on("data", (messageChunk) => {
+    client.on("data", async (messageChunk) => {
       const messages = this.#accumulateMessages(messageChunk);
-      this.#processMessages(messages, callbacks);
+      await this.#processMessages(messages, callbacks);
     });
     client.on("error", (err) => {
       this.#log("error", err);
@@ -182,7 +182,10 @@ export class PeerState {
     return this.client.write(message);
   }
 
-  #processMessages(messages: Buffer[], callbacks: CallbackArgs): void {
+  async #processMessages(
+    messages: Buffer[],
+    callbacks: CallbackArgs
+  ): Promise<void> {
     for (const message of messages) {
       if (message.length - 4 === 0) {
         this.#logRecv("keep-alive");
@@ -219,7 +222,7 @@ export class PeerState {
           this.#logRecv("request");
           break;
         case 7:
-          this.#downloadPieceBlock(message, callbacks.onPieceBlock);
+          await this.#downloadPieceBlock(message, callbacks.onPieceBlock);
           break;
         case 8:
           this.#logRecv("cancel");
@@ -233,16 +236,16 @@ export class PeerState {
     }
   }
 
-  #downloadPieceBlock(
+  async #downloadPieceBlock(
     message: Buffer,
     onPieceBlock: CallbackArgs["onPieceBlock"]
-  ): void {
+  ): Promise<void> {
     // piece: <len=0009+X><id=7><index><begin><block>
     const pieceIndex = message.readUInt32BE(5);
     const begin = message.readUInt32BE(9);
     const block = Buffer.from(message, 13);
     this.#logRecv(`piece ${pieceIndex}.${begin / this.blockSize}`);
-    onPieceBlock({ piece: pieceIndex, begin }, block);
+    await onPieceBlock({ piece: pieceIndex, begin }, block);
   }
 
   #accumulateMessages(messageChunk: Buffer): Buffer[] {
