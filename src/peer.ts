@@ -1,13 +1,10 @@
 import net from "node:net";
 import { Bitfield } from "#src/bitfield.js";
 import type { Metainfo } from "#src/torrentFile.js";
+import type { PeerInfo } from "#src/tracker.js";
 import type { BlockRequest, Config, Piece } from "#src/types.js";
 
 export const PIECE_SIZE = 2 ** 14;
-export interface PeerInfo {
-  ip: string;
-  port: number;
-}
 
 export interface ConnectArgs {
   config: Config;

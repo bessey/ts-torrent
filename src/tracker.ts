@@ -1,8 +1,14 @@
 import bencode from "bencode";
-import type { PeerInfo } from "#src/peer.js";
+import { z } from "zod";
 import type { Metainfo } from "#src/torrentFile.js";
 import type { Config } from "#src/types.js";
 import { sleep } from "#src/utils.js";
+
+const peerInfoValidator = z.object({
+  ip: z.instanceof(Uint8Array),
+  port: z.number(),
+});
+export type PeerInfo = z.infer<typeof peerInfoValidator>;
 
 export interface TrackerResponse {
   complete: number;
@@ -44,17 +50,17 @@ export async function getTrackerResponse(
     return getTrackerResponse(config, meta);
   }
   const body = await response.arrayBuffer();
-
   const decoded = bencode.decode(Buffer.from(body));
 
   return {
     complete: decoded.complete,
     incomplete: decoded.incomplete,
     interval: decoded.interval,
-    peers: decoded.peers.map((peer: any) => {
+    peers: decoded.peers.map((peer: unknown) => {
+      const peerInfo = peerInfoValidator.parse(peer);
       return {
-        ip: Buffer.from(peer.ip).toString("ascii"),
-        port: peer.port,
+        ip: Buffer.from(peerInfo.ip).toString("ascii"),
+        port: peerInfo.port,
       };
     }),
   };

@@ -1,5 +1,5 @@
-import { PIECE_SIZE } from "./peer.js";
-import type { TorrentState } from "./torrentState.js";
+import { PIECE_SIZE } from "#src/peer.js";
+import type { TorrentState } from "#src/torrentState.js";
 
 export async function maintainPeerConnections(torrentState: TorrentState) {
   const neededPeers =
