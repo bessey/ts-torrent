@@ -91,7 +91,7 @@ export class PeerState {
     if (!this.bitfield) return;
 
     const blocksPerPiece = Math.ceil(metainfo.info.pieceLength / PIECE_SIZE);
-    for (let i = 0; i < blocksPerPiece; i++) {
+    for (let i = 0; i <= blocksPerPiece; i++) {
       const begin = i * PIECE_SIZE;
       this.requestBlock(pieceIndex, begin);
     }
@@ -110,11 +110,11 @@ export class PeerState {
   }
 
   #processMessageChunk(messageChunk: Buffer): void {
-    let message = this.#accumulateMessage(messageChunk);
-    while (message) {
+    const messages = this.#accumulateMessages(messageChunk);
+    for (const message of messages) {
       if (message.length - 4 === 0) {
         this.#log("keep-alive");
-        return;
+        break;
       }
       const id = message.readUInt8(4);
       switch (id) {
@@ -158,17 +158,15 @@ export class PeerState {
         default:
           this.#log("unknown", id);
       }
-      message = this.#accumulateMessage(Buffer.from([]));
     }
   }
 
   #downloadPieceBlock(message: Buffer): void {
     // piece: <len=0009+X><id=7><index><begin><block>
-    // const blockSize = length - 9;
-    // const index = message.readUInt32BE(5);
-    // const begin = message.readUInt32BE(9);
-    this.#log("piece");
-    // const block = Buffer.from(message, 13, length - 9));
+    const index = message.readUInt32BE(5);
+    const begin = message.readUInt32BE(9);
+    const block = Buffer.from(message, 13);
+    this.#log("piece", index, begin, block.length);
   }
 
   #handshakeMessage(config: Config, metainfo: Metainfo): Buffer {
@@ -180,9 +178,8 @@ export class PeerState {
     return Buffer.concat([pstrlen, pstr, reserved, infoHash, config.peerId]);
   }
 
-  #accumulateMessage(messageChunk: Buffer): Buffer | null {
+  #accumulateMessages(messageChunk: Buffer): Buffer[] {
     this.nextMessage = Buffer.concat([this.nextMessage, messageChunk]);
-    if (this.nextMessage.length < 4) return null;
 
     // Handshake is a special case
     if (this.status !== "handshaken") {
@@ -190,18 +187,19 @@ export class PeerState {
       const length = 49 + pstrlen;
       this.status = "handshaken";
       this.#clearLastMessage(length);
-      return null;
+      return [];
     }
 
-    const payloadlength = this.nextMessage.readUInt32BE(0);
-    const length = payloadlength + 4;
+    const messages = [];
+    while (true) {
+      if (this.nextMessage.length < 4) return messages;
+      const payloadlength = this.nextMessage.readUInt32BE(0);
+      const length = payloadlength + 4;
+      if (this.nextMessage.length < length) return messages;
 
-    if (this.nextMessage.length < length) return null;
-
-    const currentMessage = Buffer.from(this.nextMessage, 0, length);
-    this.#clearLastMessage(length);
-
-    return currentMessage;
+      messages.push(Buffer.from(this.nextMessage, 0, length));
+      this.#clearLastMessage(length);
+    }
   }
 
   #clearLastMessage(lastMessageLength: number): void {
