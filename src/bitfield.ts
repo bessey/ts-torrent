@@ -21,6 +21,12 @@ export class Bitfield {
     return !this.has(index);
   }
 
+  set(index: number): void {
+    const byteIndex = Math.floor(index / 8);
+    const bitIndex = index % 8;
+    this.bits[byteIndex] |= 1 << (7 - bitIndex);
+  }
+
   get byteLength(): number {
     return this.bits.length;
   }
