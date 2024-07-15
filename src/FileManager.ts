@@ -8,22 +8,16 @@ export class FileManager {
   config: Config;
   metainfo: Metainfo;
   files: TFile[];
-  completedPieces: Bitfield;
   pieceProgress: Record<PieceIndex, PieceProgress>;
 
   constructor(config: Config, metainfo: Metainfo) {
     this.config = config;
     this.metainfo = metainfo;
     this.files = metainfo.info.fileList();
-    const blocksPerPiece = Math.ceil(
-      metainfo.info.pieceLength / config.blockSize
-    );
-    this.completedPieces = new Bitfield(Buffer.alloc(blocksPerPiece));
     this.pieceProgress = {};
   }
 
   workForPiece(piece: PieceIndex): number[] {
-    if (this.completedPieces.has(piece)) return [];
     const pieceProgress = this.pieceProgress[piece];
     if (pieceProgress === undefined)
       return [...Array(this.config.desiredBlocksInFlight).keys()];

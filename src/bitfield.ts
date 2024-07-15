@@ -25,9 +25,11 @@ export class Bitfield {
     return !this.has(index);
   }
 
-  remaining(maximum: number): number[] {
+  remaining(maximum?: number): number[] {
     const remaining = [];
-    for (let i = 0; i < maximum; i++) {
+
+    // TODO: would be better if this was a lazy iterator
+    for (let i = 0; i < (maximum ?? this.length); i++) {
       if (this.isMissing(i)) remaining.push(i);
     }
     return remaining;

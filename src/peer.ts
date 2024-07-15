@@ -29,7 +29,7 @@ export class PeerState {
   status: "connecting" | "connected" | "handshaken" | "disconnected";
   bitfield: Bitfield | null;
   nextMessage: Buffer;
-  blocksInFlight: Record<PieceIndex, BlockIndex[]>;
+  blocksInFlight: Map<PieceIndex, BlockIndex[]>;
 
   constructor(config: Config, peer: PeerInfo) {
     this.blockSize = config.blockSize;
@@ -43,7 +43,7 @@ export class PeerState {
     this.status = "disconnected";
     this.bitfield = null;
     this.nextMessage = Buffer.from([]);
-    this.blocksInFlight = {};
+    this.blocksInFlight = new Map();
   }
 
   async connect(
@@ -173,9 +173,9 @@ export class PeerState {
     const blockIndex = begin / this.blockSize;
 
     this.#logSend(`request ${pieceIndex}.${blockIndex}`);
-    const blocksInFlightForPiece = this.blocksInFlight[pieceIndex];
+    const blocksInFlightForPiece = this.blocksInFlight.get(pieceIndex);
     if (blocksInFlightForPiece === undefined) {
-      this.blocksInFlight[pieceIndex] = [blockIndex];
+      this.blocksInFlight.set(pieceIndex, [blockIndex]);
     } else {
       blocksInFlightForPiece.push(blockIndex);
     }

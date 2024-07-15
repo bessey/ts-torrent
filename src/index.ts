@@ -26,7 +26,7 @@ export async function main(): Promise<Promise<void>> {
     blockSize: 2 ** 14,
     desiredPeers: 30,
     desiredPiecesInFlight: 1,
-    desiredBlocksInFlight: 2,
+    desiredBlocksInFlight: 5,
   };
 
   const data = await fs.readFile(config.filePath);

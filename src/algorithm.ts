@@ -1,4 +1,5 @@
 import type { TorrentState } from "#src/torrentState.js";
+import type { PeerState } from "./peer.js";
 
 export async function maintainPeerConnections(torrentState: TorrentState) {
   const neededPeers =
@@ -24,25 +25,42 @@ export async function maintainPeerConnections(torrentState: TorrentState) {
 }
 
 export async function saturatePieceBlockRequests(appState: TorrentState) {
-  for (let piece = 0; piece < appState.bitfield.length; piece++) {
-    const requestsCount = Object.keys(appState.requestsInFlight).length;
-    if (requestsCount >= appState.config.desiredPiecesInFlight) return;
-
-    if (appState.requestsInFlight[piece]) continue;
-    const peerWithPiece = [...appState.activePeers.values()].find((p) =>
-      p.bitfield?.has(piece)
-    );
-    if (!peerWithPiece) continue;
-
+  const pieceCapacity =
+    appState.config.desiredPiecesInFlight - appState.requestsInFlight.size;
+  for (let i = 0; i < pieceCapacity; i++) {
+    const pieces = appState.bitfield.remaining();
+    if (pieces.length === 0) {
+      console.log("Are we done?");
+      return;
+    }
+    let peerWithPiece: PeerState | undefined;
+    const inFlightPieces = [...appState.requestsInFlight.keys()];
+    const nextUnstartedPiece = pieces.find((piece) => {
+      if (inFlightPieces.includes(piece)) return false;
+      peerWithPiece = [...appState.activePeers.values()].find((p) =>
+        p.bitfield?.has(piece)
+      );
+      return !!peerWithPiece;
+    });
+    if (nextUnstartedPiece === undefined || peerWithPiece === undefined) {
+      console.log("No one has remaining pieces");
+      return;
+    }
+    appState.requestsInFlight.set(nextUnstartedPiece, peerWithPiece);
     peerWithPiece.sendInterested();
+  }
+  // ensure enough blocks are in flight
+  // if not, request available more blocks from FileManager for given piece
+  for (const [piece, peer] of appState.requestsInFlight.entries()) {
     const blocksPerPiece = Math.ceil(
       appState.metainfo.info.pieceLength / appState.config.blockSize
     );
     for (let block = 0; block <= blocksPerPiece; block++) {
+      const blocksInFlight = peer.blocksInFlight.get(piece) || [];
+      if (blocksInFlight.length >= appState.config.desiredBlocksInFlight) break;
+      if (blocksInFlight.includes(block)) continue;
       const begin = block * appState.config.blockSize;
-      peerWithPiece.sendRequest(piece, begin);
-      if (block >= appState.config.desiredBlocksInFlight) break;
+      peer.sendRequest(piece, begin);
     }
-    appState.requestsInFlight[piece] = peerWithPiece;
   }
 }

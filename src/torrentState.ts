@@ -11,7 +11,7 @@ export class TorrentState {
   activePeers: Set<PeerState>;
   ignoredPeers: Set<PeerState>;
   bitfield: Bitfield;
-  requestsInFlight: Record<number, PeerState>;
+  requestsInFlight: Map<number, PeerState>;
   fileManager: FileManager;
 
   constructor(config: Config, metainfo: Metainfo) {
@@ -20,9 +20,8 @@ export class TorrentState {
     this.availablePeers = new Set();
     this.activePeers = new Set();
     this.ignoredPeers = new Set();
-    this.requestsInFlight = {};
+    this.requestsInFlight = new Map();
     this.fileManager = new FileManager(config, metainfo);
-
     const emptyBitfield = Buffer.alloc(metainfo.info.pieceHashes.length);
     this.bitfield = new Bitfield(emptyBitfield);
   }
@@ -49,7 +48,7 @@ export class TorrentState {
     if (pieceComplete) {
       console.log(`piece ${blockRequest.piece} complete`);
       this.bitfield.set(blockRequest.piece);
-      delete this.requestsInFlight[blockRequest.piece];
+      this.requestsInFlight.delete(blockRequest.piece);
     }
   }
 }
