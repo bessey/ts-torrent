@@ -25,8 +25,9 @@ export class PeerState {
   peerInterested: boolean;
   client: net.Socket | null;
   lastErrorAt: number | null;
-  status: "connecting" | "connected" | "disconnected";
+  status: "connecting" | "connected" | "handshaken" | "disconnected";
   bitfield: Bitfield | null;
+  nextMessage: Buffer;
 
   constructor(peer: PeerInfo) {
     this.peer = peer;
@@ -38,6 +39,7 @@ export class PeerState {
     this.lastErrorAt = null;
     this.status = "disconnected";
     this.bitfield = null;
+    this.nextMessage = Buffer.from([]);
   }
 
   async connect({
@@ -58,8 +60,8 @@ export class PeerState {
     this.status = "connecting";
     onConnecting();
 
-    client.on("data", (message) => {
-      this.#processMessage(message);
+    client.on("data", (messageChunk) => {
+      this.#processMessageChunk(messageChunk);
     });
     client.on("error", (err) => {
       this.#log("error", err);
@@ -107,52 +109,66 @@ export class PeerState {
     this.client?.write(message);
   }
 
-  #processMessage(message: Buffer): void {
-    const length = message.readUInt32BE(0);
-    if (length === 0) {
-      this.#log("keep-alive");
-      return;
+  #processMessageChunk(messageChunk: Buffer): void {
+    let message = this.#accumulateMessage(messageChunk);
+    while (message) {
+      if (message.length - 4 === 0) {
+        this.#log("keep-alive");
+        return;
+      }
+      const id = message.readUInt8(4);
+      switch (id) {
+        case 0:
+          this.#log("choke");
+          this.peerChoking = true;
+          break;
+        case 1:
+          this.#log("unchoke");
+          this.peerChoking = false;
+          break;
+        case 2:
+          this.#log("interested");
+          this.peerInterested = true;
+          break;
+        case 3:
+          this.#log("not interested");
+          this.peerInterested = false;
+          break;
+        case 4:
+          this.#log("have");
+          break;
+        case 5:
+          this.bitfield = new Bitfield(Buffer.from(message, 5));
+          this.#log(
+            `bitfield: ${Math.round(this.bitfield.progress)}% complete`
+          );
+          break;
+        case 6:
+          this.#log("request");
+          break;
+        case 7:
+          this.#downloadPieceBlock(message);
+          break;
+        case 8:
+          this.#log("cancel");
+          break;
+        case 9:
+          this.#log("port");
+          break;
+        default:
+          this.#log("unknown", id);
+      }
+      message = this.#accumulateMessage(Buffer.from([]));
     }
-    const id = message.readUInt8(4);
-    switch (id) {
-      case 0:
-        this.#log("choke");
-        this.peerChoking = true;
-        break;
-      case 1:
-        this.#log("unchoke");
-        this.peerChoking = false;
-        break;
-      case 2:
-        this.#log("interested");
-        this.peerInterested = true;
-        break;
-      case 3:
-        this.#log("not interested");
-        this.peerInterested = false;
-        break;
-      case 4:
-        this.#log("have");
-        break;
-      case 5:
-        this.bitfield = new Bitfield(Buffer.from(message, 5, length - 5));
-        this.#log(`bitfield: ${Math.round(this.bitfield.progress)}% complete`);
-        break;
-      case 6:
-        this.#log("request");
-        break;
-      case 7:
-        this.#log("piece");
-        break;
-      case 8:
-        this.#log("cancel");
-        break;
-      case 9:
-        this.#log("port");
-        break;
-      default:
-        this.#log("unknown", id);
-    }
+  }
+
+  #downloadPieceBlock(message: Buffer): void {
+    // piece: <len=0009+X><id=7><index><begin><block>
+    // const blockSize = length - 9;
+    // const index = message.readUInt32BE(5);
+    // const begin = message.readUInt32BE(9);
+    this.#log("piece");
+    // const block = Buffer.from(message, 13, length - 9));
   }
 
   #handshakeMessage(config: Config, metainfo: Metainfo): Buffer {
@@ -162,6 +178,38 @@ export class PeerState {
     const infoHash = metainfo.infoHash;
 
     return Buffer.concat([pstrlen, pstr, reserved, infoHash, config.peerId]);
+  }
+
+  #accumulateMessage(messageChunk: Buffer): Buffer | null {
+    this.nextMessage = Buffer.concat([this.nextMessage, messageChunk]);
+    if (this.nextMessage.length < 4) return null;
+
+    // Handshake is a special case
+    if (this.status !== "handshaken") {
+      const pstrlen = this.nextMessage.readUInt8(0);
+      const length = 49 + pstrlen;
+      this.status = "handshaken";
+      if (this.nextMessage.length === length) {
+        this.nextMessage = Buffer.from([]);
+      } else {
+        this.nextMessage = Buffer.from(this.nextMessage, length);
+      }
+      return null;
+    }
+
+    const payloadlength = this.nextMessage.readUInt32BE(0);
+    const length = payloadlength + 4;
+
+    if (this.nextMessage.length < length) return null;
+
+    const currentMessage = Buffer.from(this.nextMessage, 0, length);
+    if (this.nextMessage.length === length) {
+      this.nextMessage = Buffer.from([]);
+    } else {
+      this.nextMessage = Buffer.from(this.nextMessage, length);
+    }
+
+    return currentMessage;
   }
 
   #log(message: string, ...rest: any): void {
