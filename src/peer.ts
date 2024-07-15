@@ -171,9 +171,7 @@ export class PeerState {
     message.writeUInt32BE(begin, 9);
     message.writeUInt32BE(PIECE_SIZE, 13);
 
-    this.#logSend(
-      `requesting piece ${pieceIndex}, block ${begin / PIECE_SIZE}`
-    );
+    this.#logSend(`request ${pieceIndex}.${begin / PIECE_SIZE}`);
     return this.client.write(message);
   }
 
@@ -234,10 +232,10 @@ export class PeerState {
 
   #downloadPieceBlock(message: Buffer): void {
     // piece: <len=0009+X><id=7><index><begin><block>
-    const index = message.readUInt32BE(5);
+    const pieceIndex = message.readUInt32BE(5);
     const begin = message.readUInt32BE(9);
     const block = Buffer.from(message, 13);
-    this.#logRecv("piece", index, begin);
+    this.#logRecv(`piece ${pieceIndex}.${begin / PIECE_SIZE}`);
   }
 
   #accumulateMessages(messageChunk: Buffer): Buffer[] {

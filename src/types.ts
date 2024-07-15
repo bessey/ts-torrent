@@ -1,6 +1,7 @@
 export type Piece = number;
 
 export interface Config {
+  filePath: string;
   downloadsDirectory: string;
   port: number;
   peerId: Buffer;

@@ -1,108 +1,63 @@
 import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import { program } from "commander";
+import {
+  maintainPeerConnections,
+  saturatePieceBlockRequests,
+} from "#src//algorithm.js";
+import { every } from "#src//utils.js";
 import { Bitfield } from "#src/bitfield.js";
-import { PIECE_SIZE, PeerState } from "#src/peer.js";
-import { buildMetainfo } from "#src/torrentFile.js";
+import { PeerState } from "#src/peer.js";
+import { type Metainfo, buildMetainfo } from "#src/torrentFile.js";
 import { getTrackerResponse } from "#src/tracker.js";
 import type { Config } from "#src/types.js";
-import { every } from "#src/utils.js";
 
-program.parse();
-
-interface Download {
-  filePath: string;
+if (import.meta.url === `file://${process.argv[1]}`) {
+  program.parse();
+  main();
 }
 
-const download: Download = {
-  filePath: "./test/debian-12.6.0-arm64-netinst.iso.torrent",
-};
-
-const config: Config = {
-  downloadsDirectory: "./downloads/",
-  port: 6881,
-  peerId: randomBytes(20),
-  desiredPeers: 30,
-  desiredPiecesInFlight: 1,
-  desiredBlocksInFlight: 2,
-};
-
-const data = await fs.readFile(download.filePath);
-
-const metainfo = buildMetainfo(data);
-
-const trackerData = await getTrackerResponse(config, metainfo);
-
-console.log(trackerData);
-
-const peerConns = trackerData.peers.map((peer) => new PeerState(peer));
-
-interface AppState {
+export class TorrentState {
+  config: Config;
+  metainfo: Metainfo;
   availablePeers: Set<PeerState>;
   activePeers: Set<PeerState>;
   ignoredPeers: Set<PeerState>;
   bitfield: Bitfield;
   requestsInFlight: Record<number, PeerState>;
+
+  constructor(config: Config, metainfo: Metainfo) {
+    this.config = config;
+    this.metainfo = metainfo;
+    this.availablePeers = new Set();
+    this.activePeers = new Set();
+    this.ignoredPeers = new Set();
+    this.requestsInFlight = {};
+
+    const emptyBitfield = Buffer.alloc(metainfo.info.pieces.length);
+    this.bitfield = new Bitfield(emptyBitfield);
+  }
 }
+export async function main(): Promise<Promise<void>> {
+  const config: Config = {
+    filePath: "./test/debian-12.6.0-arm64-netinst.iso.torrent",
+    downloadsDirectory: "./downloads/",
+    port: 6881,
+    peerId: randomBytes(20),
+    desiredPeers: 30,
+    desiredPiecesInFlight: 1,
+    desiredBlocksInFlight: 2,
+  };
 
-const appState: AppState = {
-  availablePeers: new Set(peerConns),
-  activePeers: new Set(),
-  ignoredPeers: new Set(),
-  bitfield: new Bitfield(
-    Buffer.alloc(Math.ceil(metainfo.totalLength() / metainfo.info.pieceLength))
-  ),
-  requestsInFlight: {},
-};
-
-every(10, async () => {
-  const neededPeers = config.desiredPeers - appState.activePeers.size;
-  if (neededPeers <= 0) return;
-  let i = 0;
-  for (const peerConn of appState.availablePeers) {
-    if (i >= neededPeers) break;
-    if (peerConn.lastErrorAt && Date.now() - peerConn.lastErrorAt < 60000)
-      continue;
-    peerConn.connect({
-      config,
-      metainfo,
-      onConnecting() {
-        appState.activePeers.add(peerConn);
-        appState.availablePeers.delete(peerConn) ||
-          appState.ignoredPeers.delete(peerConn);
-      },
-      onDisconnect() {
-        if (appState.activePeers.delete(peerConn))
-          appState.availablePeers.add(peerConn);
-      },
-      onError() {
-        appState.activePeers.delete(peerConn);
-        appState.ignoredPeers.add(peerConn);
-      },
-    });
-    i++;
-  }
-  console.log(
-    `New connections attempted. Active: ${appState.activePeers.size}, Available: ${appState.availablePeers.size}, Ignored: ${appState.ignoredPeers.size}`
+  const data = await fs.readFile(config.filePath);
+  const metainfo = buildMetainfo(data);
+  const torrentState = new TorrentState(config, metainfo);
+  const trackerData = await getTrackerResponse(config, metainfo);
+  console.log(trackerData);
+  torrentState.availablePeers = new Set(
+    trackerData.peers.map((peer) => new PeerState(peer))
   );
-});
 
-every(100, async () => {
-  for (let i = 0; i < appState.bitfield.length; i++) {
-    if (appState.requestsInFlight[i]) continue;
-    for (const p of appState.activePeers) {
-      if (p.bitfield === null || p.bitfield.missing(i)) continue;
-      p.sendInterested();
-
-      const blocksPerPiece = Math.ceil(metainfo.info.pieceLength / PIECE_SIZE);
-      for (let i = 0; i <= blocksPerPiece; i++) {
-        const begin = i * PIECE_SIZE;
-        p.sendRequest(i, begin);
-        if (i >= config.desiredBlocksInFlight) break;
-      }
-      appState.requestsInFlight[i] = p;
-      const requestsCount = Object.keys(appState.requestsInFlight).length;
-      if (requestsCount >= config.desiredPiecesInFlight) return;
-    }
-  }
-});
+  every(100, () => maintainPeerConnections(torrentState));
+  every(100, () => saturatePieceBlockRequests(torrentState));
+}
