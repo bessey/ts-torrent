@@ -29,7 +29,7 @@ export class PeerState {
   status: "connecting" | "connected" | "handshaken" | "disconnected";
   bitfield: Bitfield | null;
   nextMessage: Buffer;
-  blocksInFlight: Map<PieceIndex, BlockIndex[]>;
+  blocksInFlight: Map<PieceIndex, Set<BlockIndex>>;
 
   constructor(config: Config, peer: PeerInfo) {
     this.blockSize = config.blockSize;
@@ -175,9 +175,9 @@ export class PeerState {
     this.#logSend(`request ${pieceIndex}.${blockIndex}`);
     const blocksInFlightForPiece = this.blocksInFlight.get(pieceIndex);
     if (blocksInFlightForPiece === undefined) {
-      this.blocksInFlight.set(pieceIndex, [blockIndex]);
+      this.blocksInFlight.set(pieceIndex, new Set([blockIndex]));
     } else {
-      blocksInFlightForPiece.push(blockIndex);
+      blocksInFlightForPiece.add(blockIndex);
     }
     return this.client.write(message);
   }

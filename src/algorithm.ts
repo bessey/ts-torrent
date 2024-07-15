@@ -56,9 +56,9 @@ export async function saturatePieceBlockRequests(appState: TorrentState) {
       appState.metainfo.info.pieceLength / appState.config.blockSize
     );
     for (let block = 0; block <= blocksPerPiece; block++) {
-      const blocksInFlight = peer.blocksInFlight.get(piece) || [];
-      if (blocksInFlight.length >= appState.config.desiredBlocksInFlight) break;
-      if (blocksInFlight.includes(block)) continue;
+      const blocksInFlight = peer.blocksInFlight.get(piece) || new Set();
+      if (blocksInFlight.size >= appState.config.desiredBlocksInFlight) break;
+      if (blocksInFlight.has(block)) continue;
       const begin = block * appState.config.blockSize;
       peer.sendRequest(piece, begin);
     }
