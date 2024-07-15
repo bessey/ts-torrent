@@ -1,8 +1,8 @@
 import bencode from "bencode";
-import type { Config } from "#src/config.js";
+import type { PeerInfo } from "#src/peer.js";
 import type { Metainfo } from "#src/torrentFile.js";
-import type { PeerInfo } from "./peer.js";
-import { sleep } from "./utils.js";
+import type { Config } from "#src/types.js";
+import { sleep } from "#src/utils.js";
 
 export interface TrackerResponse {
   complete: number;

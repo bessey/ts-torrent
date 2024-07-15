@@ -17,6 +17,14 @@ export class Bitfield {
     return (bit & (1 << (7 - bitIndex))) !== 0;
   }
 
+  missing(index: number): boolean {
+    return !this.has(index);
+  }
+
+  get byteLength(): number {
+    return this.bits.length;
+  }
+
   get length(): number {
     return this.bits.length * 8;
   }

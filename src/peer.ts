@@ -1,8 +1,7 @@
-import type { Metainfo } from "#src/torrentFile.js";
-import { Bitfield } from "./bitfield.js";
-import type { Config } from "./config.js";
-
 import net from "node:net";
+import { Bitfield } from "#src/bitfield.js";
+import type { Metainfo } from "#src/torrentFile.js";
+import type { BlockRequest, Config, Piece } from "#src/types.js";
 
 export const PIECE_SIZE = 2 ** 14;
 export interface PeerInfo {
@@ -17,6 +16,7 @@ export interface ConnectArgs {
   onDisconnect: () => void;
   onError: (err: Error) => void;
 }
+
 export class PeerState {
   peer: PeerInfo;
   amChoking: boolean;
@@ -28,6 +28,7 @@ export class PeerState {
   status: "connecting" | "connected" | "handshaken" | "disconnected";
   bitfield: Bitfield | null;
   nextMessage: Buffer;
+  blocksInFlight: Record<Piece, BlockRequest[]>;
 
   constructor(peer: PeerInfo) {
     this.peer = peer;
@@ -40,6 +41,7 @@ export class PeerState {
     this.status = "disconnected";
     this.bitfield = null;
     this.nextMessage = Buffer.from([]);
+    this.blocksInFlight = {};
   }
 
   async connect({
@@ -54,15 +56,15 @@ export class PeerState {
     client.connect(this.peer.port, this.peer.ip, () => {
       this.#log("connected");
       this.status = "connected";
-      this.handshake(config, metainfo);
+      this.sendHandshake(config, metainfo);
     });
     this.#log("connecting");
     this.status = "connecting";
     onConnecting();
 
     client.on("data", (messageChunk) => {
-      console.log("data, len:", messageChunk.length);
-      this.#processMessageChunk(messageChunk);
+      const messages = this.#accumulateMessages(messageChunk);
+      this.#processMessages(messages);
     });
     client.on("error", (err) => {
       this.#log("error", err);
@@ -83,21 +85,84 @@ export class PeerState {
     return client;
   }
 
-  handshake(config: Config, metainfo: Metainfo): void {
-    const handshake = this.#handshakeMessage(config, metainfo);
-    this.client?.write(handshake);
+  sendHandshake(config: Config, metainfo: Metainfo): boolean {
+    this.#assertClient();
+    // handshake: <pstrlen><pstr><reserved><info_hash><peer_id>
+    const pstrlen = Buffer.from([19]);
+    const pstr = Buffer.from("BitTorrent protocol");
+    const reserved = Buffer.alloc(8);
+    const infoHash = metainfo.infoHash;
+
+    const message = Buffer.concat([
+      pstrlen,
+      pstr,
+      reserved,
+      infoHash,
+      config.peerId,
+    ]);
+
+    return this.client.write(message);
   }
 
-  requestPiece(metainfo: Metainfo, pieceIndex: number): void {
-    if (!this.bitfield) return;
-
-    const blocksPerPiece = Math.ceil(metainfo.info.pieceLength / PIECE_SIZE);
-    for (let i = 0; i <= blocksPerPiece; i++) {
-      const begin = i * PIECE_SIZE;
-      this.requestBlock(pieceIndex, begin);
-    }
+  sendChoke(): boolean {
+    this.#assertClient();
+    if (this.amChoking) return false;
+    // choke: <len=0001><id=0>
+    const message = Buffer.from([0, 0, 0, 1, 0]);
+    this.#logSend("choke");
+    return this.client.write(message);
   }
-  requestBlock(pieceIndex: number, begin: number): void {
+
+  sendUnchoke(): boolean {
+    this.#assertClient();
+    if (!this.amChoking) return false;
+    // unchoke: <len=0001><id=1>
+    const message = Buffer.from([0, 0, 0, 1, 1]);
+    this.#logSend("unchoke");
+    return this.client.write(message);
+  }
+  sendInterested(): boolean {
+    this.#assertClient();
+    if (this.amInterested) return false;
+    // interested: <len=0001><id=2>
+    const message = Buffer.from([0, 0, 0, 1, 2]);
+    this.#logSend("interested");
+    return this.client.write(message);
+  }
+
+  sendNotInterested(): boolean {
+    this.#assertClient();
+    if (!this.amInterested) return false;
+    // not interested: <len=0001><id=3>
+    const message = Buffer.from([0, 0, 0, 1, 3]);
+    this.#logSend("not interested");
+    return this.client.write(message);
+  }
+
+  sendHave(pieceIndex: number): boolean {
+    this.#assertClient();
+    // have: <len=0005><id=4><piece index>
+    const message = Buffer.alloc(9);
+    message.writeUInt32BE(5, 0);
+    message.writeUInt8(4, 4);
+    message.writeUInt32BE(pieceIndex, 5);
+    this.#logSend("have", pieceIndex);
+    return this.client.write(message);
+  }
+
+  sendBitfield(bitfield: Bitfield): boolean {
+    this.#assertClient();
+    // bitfield: <len=0001+X><id=5><bitfield>
+    const header = Buffer.alloc(5 + bitfield.byteLength);
+    header.writeUInt32BE(1 + bitfield.byteLength, 0);
+    header.writeUInt8(5, 4);
+    const message = Buffer.concat([header, bitfield.bits]);
+    this.#logSend(`bitfield: ${Math.round(bitfield.progress)}% complete`);
+    return this.client.write(message);
+  }
+
+  sendRequest(pieceIndex: number, begin: number): boolean {
+    this.#assertClient();
     // request: <len=0013><id=6><index><begin><length>
     const message = Buffer.alloc(17);
     message.writeUInt32BE(13, 0);
@@ -106,59 +171,64 @@ export class PeerState {
     message.writeUInt32BE(begin, 9);
     message.writeUInt32BE(PIECE_SIZE, 13);
 
-    this.#log(`requesting piece ${pieceIndex}, block ${begin / PIECE_SIZE}`);
-    this.client?.write(message);
+    this.#logSend(
+      `requesting piece ${pieceIndex}, block ${begin / PIECE_SIZE}`
+    );
+    return this.client.write(message);
   }
 
-  #processMessageChunk(messageChunk: Buffer): void {
-    const messages = this.#accumulateMessages(messageChunk);
+  #processMessages(messages: Buffer[]): void {
     for (const message of messages) {
-      if (message.length - 4 === 0) {
-        this.#log("keep-alive");
+      this.#handleMessage(message);
+    }
+  }
+
+  #handleMessage(message: Buffer): void {
+    if (message.length - 4 === 0) {
+      this.#logRecv("keep-alive");
+      return;
+    }
+    const id = message.readUInt8(4);
+    switch (id) {
+      case 0:
+        this.#logRecv("choke");
+        this.peerChoking = true;
         break;
-      }
-      const id = message.readUInt8(4);
-      switch (id) {
-        case 0:
-          this.#log("choke");
-          this.peerChoking = true;
-          break;
-        case 1:
-          this.#log("unchoke");
-          this.peerChoking = false;
-          break;
-        case 2:
-          this.#log("interested");
-          this.peerInterested = true;
-          break;
-        case 3:
-          this.#log("not interested");
-          this.peerInterested = false;
-          break;
-        case 4:
-          this.#log("have");
-          break;
-        case 5:
-          this.bitfield = new Bitfield(message.subarray(5));
-          this.#log(
-            `bitfield: ${Math.round(this.bitfield.progress)}% complete`
-          );
-          break;
-        case 6:
-          this.#log("request");
-          break;
-        case 7:
-          this.#downloadPieceBlock(message);
-          break;
-        case 8:
-          this.#log("cancel");
-          break;
-        case 9:
-          this.#log("port");
-          break;
-        default:
-          this.#log("unknown", id);
-      }
+      case 1:
+        this.#logRecv("unchoke");
+        this.peerChoking = false;
+        break;
+      case 2:
+        this.#logRecv("interested");
+        this.peerInterested = true;
+        break;
+      case 3:
+        this.#logRecv("not interested");
+        this.peerInterested = false;
+        break;
+      case 4:
+        this.#logRecv("have");
+        break;
+      case 5:
+        this.bitfield = new Bitfield(message.subarray(5));
+        this.#logRecv(
+          `bitfield: ${Math.round(this.bitfield.progress)}% complete`
+        );
+        break;
+      case 6:
+        this.#logRecv("request");
+        break;
+      case 7:
+        this.#downloadPieceBlock(message);
+        break;
+      case 8:
+        this.#logRecv("cancel");
+        break;
+      case 9:
+        this.#logRecv("port");
+        break;
+      default:
+        this.#logRecv("unknown", id);
     }
   }
 
@@ -167,16 +237,7 @@ export class PeerState {
     const index = message.readUInt32BE(5);
     const begin = message.readUInt32BE(9);
     const block = Buffer.from(message, 13);
-    this.#log("piece", index, begin, block.length);
-  }
-
-  #handshakeMessage(config: Config, metainfo: Metainfo): Buffer {
-    const pstrlen = Buffer.from([19]);
-    const pstr = Buffer.from("BitTorrent protocol");
-    const reserved = Buffer.alloc(8);
-    const infoHash = metainfo.infoHash;
-
-    return Buffer.concat([pstrlen, pstr, reserved, infoHash, config.peerId]);
+    this.#logRecv("piece", index, begin);
   }
 
   #accumulateMessages(messageChunk: Buffer): Buffer[] {
@@ -227,5 +288,17 @@ export class PeerState {
 
   #log(message: string, ...rest: any): void {
     console.log(`[${this.peer.ip}:${this.peer.port}] ${message}`, ...rest);
+  }
+
+  #logRecv(message: string, ...rest: any): void {
+    this.#log(`<< ${message}`, ...rest);
+  }
+
+  #logSend(message: string, ...rest: any): void {
+    this.#log(`>> ${message}`, ...rest);
+  }
+
+  #assertClient(): asserts this is { client: net.Socket } {
+    if (this.client === null) throw new Error("Client not connected");
   }
 }

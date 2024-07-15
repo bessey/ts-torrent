@@ -1,13 +1,12 @@
+import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import { program } from "commander";
-
-import { randomBytes } from "node:crypto";
-import type { Config } from "#src/config.js";
+import { Bitfield } from "#src/bitfield.js";
+import { PIECE_SIZE, PeerState } from "#src/peer.js";
 import { buildMetainfo } from "#src/torrentFile.js";
 import { getTrackerResponse } from "#src/tracker.js";
-import { PeerState } from "#src/peer.js";
-import { every } from "./utils.js";
-import { Bitfield } from "./bitfield.js";
+import type { Config } from "#src/types.js";
+import { every } from "#src/utils.js";
 
 program.parse();
 
@@ -24,6 +23,8 @@ const config: Config = {
   port: 6881,
   peerId: randomBytes(20),
   desiredPeers: 30,
+  desiredPiecesInFlight: 1,
+  desiredBlocksInFlight: 2,
 };
 
 const data = await fs.readFile(download.filePath);
@@ -41,6 +42,7 @@ interface AppState {
   activePeers: Set<PeerState>;
   ignoredPeers: Set<PeerState>;
   bitfield: Bitfield;
+  requestsInFlight: Record<number, PeerState>;
 }
 
 const appState: AppState = {
@@ -50,6 +52,7 @@ const appState: AppState = {
   bitfield: new Bitfield(
     Buffer.alloc(Math.ceil(metainfo.totalLength() / metainfo.info.pieceLength))
   ),
+  requestsInFlight: {},
 };
 
 every(10, async () => {
@@ -84,11 +87,22 @@ every(10, async () => {
   );
 });
 
-every(5000, async () => {
-  const desiredPiece = 1000;
-  for (const p of appState.activePeers) {
-    if (p.bitfield === null) continue;
-    if (!p.bitfield.has(desiredPiece)) continue;
-    return p.requestPiece(metainfo, desiredPiece);
+every(100, async () => {
+  for (let i = 0; i < appState.bitfield.length; i++) {
+    if (appState.requestsInFlight[i]) continue;
+    for (const p of appState.activePeers) {
+      if (p.bitfield === null || p.bitfield.missing(i)) continue;
+      p.sendInterested();
+
+      const blocksPerPiece = Math.ceil(metainfo.info.pieceLength / PIECE_SIZE);
+      for (let i = 0; i <= blocksPerPiece; i++) {
+        const begin = i * PIECE_SIZE;
+        p.sendRequest(i, begin);
+        if (i >= config.desiredBlocksInFlight) break;
+      }
+      appState.requestsInFlight[i] = p;
+      const requestsCount = Object.keys(appState.requestsInFlight).length;
+      if (requestsCount >= config.desiredPiecesInFlight) return;
+    }
   }
 });
