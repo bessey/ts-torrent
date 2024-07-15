@@ -1,11 +1,12 @@
 {
   "name": "ts-torrent",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "src/index.ts",
   "scripts": {
-    "build": "npx tsc",
-    "watch": "npx tsc --watch",
-    "dev": "concurrently \"npm run watch\" \"node --watch dist/index.js\"",
+    "ts:build": "npx tsc",
+    "ts:watch": "npx tsc --watch",
+    "dev": "npx tsx watch src/index.ts",
+    "run": "npx tsx src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -21,11 +22,11 @@
     "@tsconfig/strictest": "^2.0.5",
     "@types/bencode": "^2.0.4",
     "@types/node": "^20.14.10",
+    "tsx": "^4.16.2",
     "typescript": "^5.5.3"
   },
   "dependencies": {
     "bencode": "^4.0.0",
-    "commander": "^12.1.0",
-    "concurrently": "^8.2.2"
+    "commander": "^12.1.0"
   }
 }
