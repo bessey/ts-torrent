@@ -284,15 +284,15 @@ export class PeerState {
     }
   }
 
-  #log(message: string, ...rest: any): void {
+  #log(message: string, ...rest: unknown[]): void {
     console.log(`[${this.peer.ip}:${this.peer.port}] ${message}`, ...rest);
   }
 
-  #logRecv(message: string, ...rest: any): void {
+  #logRecv(message: string, ...rest: unknown[]): void {
     this.#log(`<< ${message}`, ...rest);
   }
 
-  #logSend(message: string, ...rest: any): void {
+  #logSend(message: string, ...rest: unknown[]): void {
     this.#log(`>> ${message}`, ...rest);
   }
 

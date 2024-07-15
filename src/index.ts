@@ -6,52 +6,17 @@ import {
   saturatePieceBlockRequests,
 } from "#src//algorithm.js";
 import { every } from "#src//utils.js";
-import { Bitfield } from "#src/bitfield.js";
 import { PeerState } from "#src/peer.js";
-import { type Metainfo, buildMetainfo } from "#src/torrentFile.js";
+import { buildMetainfo } from "#src/torrentFile.js";
 import { getTrackerResponse } from "#src/tracker.js";
 import type { Config } from "#src/types.js";
+import { TorrentState } from "./torrentState.js";
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   program.parse();
   main();
 }
 
-export class TorrentState {
-  config: Config;
-  metainfo: Metainfo;
-  availablePeers: Set<PeerState>;
-  activePeers: Set<PeerState>;
-  ignoredPeers: Set<PeerState>;
-  bitfield: Bitfield;
-  requestsInFlight: Record<number, PeerState>;
-
-  constructor(config: Config, metainfo: Metainfo) {
-    this.config = config;
-    this.metainfo = metainfo;
-    this.availablePeers = new Set();
-    this.activePeers = new Set();
-    this.ignoredPeers = new Set();
-    this.requestsInFlight = {};
-
-    const emptyBitfield = Buffer.alloc(metainfo.info.pieces.length);
-    this.bitfield = new Bitfield(emptyBitfield);
-  }
-
-  peerConnected(peer: PeerState) {
-    this.activePeers.add(peer);
-    this.availablePeers.delete(peer) || this.ignoredPeers.delete(peer);
-  }
-
-  peerDisconnected(peer: PeerState) {
-    if (this.activePeers.delete(peer)) this.availablePeers.add(peer);
-  }
-
-  peerErrored(peer: PeerState) {
-    this.activePeers.delete(peer);
-    this.ignoredPeers.add(peer);
-  }
-}
 export async function main(): Promise<Promise<void>> {
   const config: Config = {
     filePath: "./test/debian-12.6.0-arm64-netinst.iso.torrent",
