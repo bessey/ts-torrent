@@ -17,8 +17,20 @@ export class Bitfield {
     return (bit & (1 << (7 - bitIndex))) !== 0;
   }
 
-  missing(index: number): boolean {
+  hasAllSet(): boolean {
+    return this.bits.every((byte) => byte === 0xff);
+  }
+
+  isMissing(index: number): boolean {
     return !this.has(index);
+  }
+
+  remaining(maximum: number): number[] {
+    const remaining = [];
+    for (let i = 0; i < maximum; i++) {
+      if (this.isMissing(i)) remaining.push(i);
+    }
+    return remaining;
   }
 
   set(index: number): void {

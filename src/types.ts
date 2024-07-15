@@ -1,4 +1,6 @@
-export type Piece = number;
+export type PieceIndex = number;
+export type BlockIndex = number;
+export type BlockOffset = number;
 
 export interface Config {
   filePath: string;
@@ -12,6 +14,6 @@ export interface Config {
 }
 
 export interface BlockRequest {
-  piece: Piece;
-  begin: number;
+  piece: PieceIndex;
+  begin: BlockOffset;
 }

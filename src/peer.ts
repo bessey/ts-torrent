@@ -1,8 +1,14 @@
 import net from "node:net";
-import { Bitfield } from "#src/bitfield.js";
+import { Bitfield } from "#src/Bitfield.js";
 import type { Metainfo } from "#src/torrentFile.js";
 import type { PeerInfo } from "#src/tracker.js";
-import type { BlockRequest, Config, Piece } from "#src/types.js";
+import type {
+  BlockIndex,
+  BlockOffset,
+  BlockRequest,
+  Config,
+  PieceIndex,
+} from "#src/types.js";
 
 export interface CallbackArgs {
   onConnecting: () => void;
@@ -23,7 +29,7 @@ export class PeerState {
   status: "connecting" | "connected" | "handshaken" | "disconnected";
   bitfield: Bitfield | null;
   nextMessage: Buffer;
-  blocksInFlight: Record<Piece, BlockRequest[]>;
+  blocksInFlight: Record<PieceIndex, BlockIndex[]>;
 
   constructor(config: Config, peer: PeerInfo) {
     this.blockSize = config.blockSize;
@@ -155,7 +161,7 @@ export class PeerState {
     return this.client.write(message);
   }
 
-  sendRequest(pieceIndex: number, begin: number): boolean {
+  sendRequest(pieceIndex: PieceIndex, begin: BlockOffset): boolean {
     this.#assertClient();
     // request: <len=0013><id=6><index><begin><length>
     const message = Buffer.alloc(17);
@@ -164,8 +170,15 @@ export class PeerState {
     message.writeUInt32BE(pieceIndex, 5);
     message.writeUInt32BE(begin, 9);
     message.writeUInt32BE(this.blockSize, 13);
+    const blockIndex = begin / this.blockSize;
 
-    this.#logSend(`request ${pieceIndex}.${begin / this.blockSize}`);
+    this.#logSend(`request ${pieceIndex}.${blockIndex}`);
+    const blocksInFlightForPiece = this.blocksInFlight[pieceIndex];
+    if (blocksInFlightForPiece === undefined) {
+      this.blocksInFlight[pieceIndex] = [blockIndex];
+    } else {
+      blocksInFlightForPiece.push(blockIndex);
+    }
     return this.client.write(message);
   }
 
@@ -241,6 +254,10 @@ export class PeerState {
       const pstr = this.nextMessage.subarray(1, pstrlen + 1).toString("ascii");
       if (pstr !== "BitTorrent protocol")
         throw new Error(`Unknown protocol: ${pstr} ${pstr.length}`);
+      const peerId = this.nextMessage
+        .subarray(pstrlen + 29, pstrlen + 29 + 20)
+        .toString("ascii");
+      this.#logRecv(`handshake ${peerId}`);
       const length = 49 + pstrlen;
       this.status = "handshaken";
       this.#clearLastMessage(length);
