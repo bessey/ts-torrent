@@ -3,6 +3,7 @@ export type Piece = number;
 export interface Config {
   filePath: string;
   downloadsDirectory: string;
+  blockSize: number;
   port: number;
   peerId: Buffer;
   desiredPeers: number;

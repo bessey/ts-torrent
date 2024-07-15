@@ -23,6 +23,7 @@ export async function main(): Promise<Promise<void>> {
     downloadsDirectory: "./downloads/",
     port: 6881,
     peerId: randomBytes(20),
+    blockSize: 2 ** 14,
     desiredPeers: 30,
     desiredPiecesInFlight: 1,
     desiredBlocksInFlight: 2,
@@ -34,7 +35,7 @@ export async function main(): Promise<Promise<void>> {
   const trackerData = await getTrackerResponse(config, metainfo);
   console.log(trackerData);
   torrentState.availablePeers = new Set(
-    trackerData.peers.map((peer) => new PeerState(peer))
+    trackerData.peers.map((peer) => new PeerState(config, peer))
   );
 
   every(100, () => maintainPeerConnections(torrentState));

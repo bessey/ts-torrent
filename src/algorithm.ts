@@ -1,4 +1,3 @@
-import { PIECE_SIZE } from "#src/peer.js";
 import type { TorrentState } from "#src/torrentState.js";
 
 export async function maintainPeerConnections(torrentState: TorrentState) {
@@ -10,12 +9,12 @@ export async function maintainPeerConnections(torrentState: TorrentState) {
     if (i >= neededPeers) break;
     if (peerConn.lastErrorAt && Date.now() - peerConn.lastErrorAt < 60000)
       continue;
-    peerConn.connect({
-      config: torrentState.config,
-      metainfo: torrentState.metainfo,
+    peerConn.connect(torrentState.config, torrentState.metainfo, {
       onConnecting: () => torrentState.peerConnected(peerConn),
       onDisconnect: () => torrentState.peerDisconnected(peerConn),
       onError: () => torrentState.peerErrored(peerConn),
+      onPieceBlock: (blockRequest, data) =>
+        torrentState.receivedPieceBlock(blockRequest, data),
     });
     i++;
   }
@@ -37,10 +36,10 @@ export async function saturatePieceBlockRequests(appState: TorrentState) {
 
     peerWithPiece.sendInterested();
     const blocksPerPiece = Math.ceil(
-      appState.metainfo.info.pieceLength / PIECE_SIZE
+      appState.metainfo.info.pieceLength / appState.config.blockSize
     );
     for (let block = 0; block <= blocksPerPiece; block++) {
-      const begin = block * PIECE_SIZE;
+      const begin = block * appState.config.blockSize;
       peerWithPiece.sendRequest(piece, begin);
       if (block >= appState.config.desiredBlocksInFlight) break;
     }

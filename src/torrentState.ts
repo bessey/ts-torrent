@@ -1,7 +1,7 @@
 import { Bitfield } from "#src/bitfield.js";
 import type { PeerState } from "#src/peer.js";
-import type { Metainfo } from "#src/torrentFile.js";
-import type { Config } from "#src/types.js";
+import type { Metainfo, TFile } from "#src/torrentFile.js";
+import type { BlockRequest, Config, Piece } from "#src/types.js";
 
 export class TorrentState {
   config: Config;
@@ -11,6 +11,7 @@ export class TorrentState {
   ignoredPeers: Set<PeerState>;
   bitfield: Bitfield;
   requestsInFlight: Record<number, PeerState>;
+  assembledPieces: Buffer[];
 
   constructor(config: Config, metainfo: Metainfo) {
     this.config = config;
@@ -19,8 +20,9 @@ export class TorrentState {
     this.activePeers = new Set();
     this.ignoredPeers = new Set();
     this.requestsInFlight = {};
+    this.assembledPieces = [];
 
-    const emptyBitfield = Buffer.alloc(metainfo.info.pieces.length);
+    const emptyBitfield = Buffer.alloc(metainfo.info.pieceHashes.length);
     this.bitfield = new Bitfield(emptyBitfield);
   }
 
@@ -37,4 +39,30 @@ export class TorrentState {
     this.activePeers.delete(peer);
     this.ignoredPeers.add(peer);
   }
+
+  receivedPieceBlock(blockRequest: BlockRequest, data: Buffer) {}
+}
+
+interface PieceProgress {
+  status: "missing" | "in-progress" | "complete";
+  blocks: Bitfield;
+}
+
+export class FileManager {
+  config: Config;
+  files: TFile[];
+  completedPieces: Bitfield;
+  pieceProgress: Record<Piece, PieceProgress>;
+
+  constructor(config: Config, metainfo: Metainfo) {
+    this.config = config;
+    this.files = metainfo.info.fileList();
+    const blocksPerPiece = Math.ceil(
+      metainfo.info.pieceLength / config.blockSize
+    );
+    this.completedPieces = new Bitfield(Buffer.alloc(blocksPerPiece));
+    this.pieceProgress = {};
+  }
+
+  writePieceBlock(piece: number, begin: number, data: Buffer) {}
 }

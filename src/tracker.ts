@@ -4,11 +4,15 @@ import type { Metainfo } from "#src/torrentFile.js";
 import type { Config } from "#src/types.js";
 import { sleep } from "#src/utils.js";
 
-const peerInfoValidator = z.object({
+const respPeerInfoSchema = z.object({
   ip: z.instanceof(Uint8Array),
   port: z.number(),
 });
-export type PeerInfo = z.infer<typeof peerInfoValidator>;
+const peerInfoSchema = z.object({
+  ip: z.string(),
+  port: z.number(),
+});
+export type PeerInfo = z.infer<typeof peerInfoSchema>;
 
 export interface TrackerResponse {
   complete: number;
@@ -57,7 +61,7 @@ export async function getTrackerResponse(
     incomplete: decoded.incomplete,
     interval: decoded.interval,
     peers: decoded.peers.map((peer: unknown) => {
-      const peerInfo = peerInfoValidator.parse(peer);
+      const peerInfo = respPeerInfoSchema.parse(peer);
       return {
         ip: Buffer.from(peerInfo.ip).toString("ascii"),
         port: peerInfo.port,

@@ -4,17 +4,15 @@ import type { Metainfo } from "#src/torrentFile.js";
 import type { PeerInfo } from "#src/tracker.js";
 import type { BlockRequest, Config, Piece } from "#src/types.js";
 
-export const PIECE_SIZE = 2 ** 14;
-
-export interface ConnectArgs {
-  config: Config;
-  metainfo: Metainfo;
+export interface CallbackArgs {
   onConnecting: () => void;
   onDisconnect: () => void;
   onError: (err: Error) => void;
+  onPieceBlock: (blockRequest: BlockRequest, data: Buffer) => void;
 }
 
 export class PeerState {
+  blockSize: number;
   peer: PeerInfo;
   amChoking: boolean;
   amInterested: boolean;
@@ -27,7 +25,8 @@ export class PeerState {
   nextMessage: Buffer;
   blocksInFlight: Record<Piece, BlockRequest[]>;
 
-  constructor(peer: PeerInfo) {
+  constructor(config: Config, peer: PeerInfo) {
+    this.blockSize = config.blockSize;
     this.peer = peer;
     this.amChoking = true;
     this.amInterested = false;
@@ -41,13 +40,11 @@ export class PeerState {
     this.blocksInFlight = {};
   }
 
-  async connect({
-    config,
-    metainfo,
-    onConnecting,
-    onDisconnect,
-    onError,
-  }: ConnectArgs): Promise<net.Socket> {
+  async connect(
+    config: Config,
+    metainfo: Metainfo,
+    callbacks: CallbackArgs
+  ): Promise<net.Socket> {
     const client = new net.Socket();
 
     client.connect(this.peer.port, this.peer.ip, () => {
@@ -57,21 +54,21 @@ export class PeerState {
     });
     this.#log("connecting");
     this.status = "connecting";
-    onConnecting();
+    callbacks.onConnecting();
 
     client.on("data", (messageChunk) => {
       const messages = this.#accumulateMessages(messageChunk);
-      this.#processMessages(messages);
+      this.#processMessages(messages, callbacks);
     });
     client.on("error", (err) => {
       this.#log("error", err);
       this.lastErrorAt = Date.now();
-      onError(err);
+      callbacks.onError(err);
     });
     client.on("close", () => {
       this.#log("closed");
       this.status = "disconnected";
-      onDisconnect();
+      callbacks.onDisconnect();
     });
     client.on("timeout", () => {
       this.#log("timeout");
@@ -166,73 +163,73 @@ export class PeerState {
     message.writeUInt8(6, 4);
     message.writeUInt32BE(pieceIndex, 5);
     message.writeUInt32BE(begin, 9);
-    message.writeUInt32BE(PIECE_SIZE, 13);
+    message.writeUInt32BE(this.blockSize, 13);
 
-    this.#logSend(`request ${pieceIndex}.${begin / PIECE_SIZE}`);
+    this.#logSend(`request ${pieceIndex}.${begin / this.blockSize}`);
     return this.client.write(message);
   }
 
-  #processMessages(messages: Buffer[]): void {
+  #processMessages(messages: Buffer[], callbacks: CallbackArgs): void {
     for (const message of messages) {
-      this.#handleMessage(message);
+      if (message.length - 4 === 0) {
+        this.#logRecv("keep-alive");
+        return;
+      }
+      const id = message.readUInt8(4);
+      switch (id) {
+        case 0:
+          this.#logRecv("choke");
+          this.peerChoking = true;
+          break;
+        case 1:
+          this.#logRecv("unchoke");
+          this.peerChoking = false;
+          break;
+        case 2:
+          this.#logRecv("interested");
+          this.peerInterested = true;
+          break;
+        case 3:
+          this.#logRecv("not interested");
+          this.peerInterested = false;
+          break;
+        case 4:
+          this.#logRecv("have");
+          break;
+        case 5:
+          this.bitfield = new Bitfield(message.subarray(5));
+          this.#logRecv(
+            `bitfield: ${Math.round(this.bitfield.progress)}% complete`
+          );
+          break;
+        case 6:
+          this.#logRecv("request");
+          break;
+        case 7:
+          this.#downloadPieceBlock(message, callbacks.onPieceBlock);
+          break;
+        case 8:
+          this.#logRecv("cancel");
+          break;
+        case 9:
+          this.#logRecv("port");
+          break;
+        default:
+          this.#logRecv("unknown", id);
+      }
     }
   }
 
-  #handleMessage(message: Buffer): void {
-    if (message.length - 4 === 0) {
-      this.#logRecv("keep-alive");
-      return;
-    }
-    const id = message.readUInt8(4);
-    switch (id) {
-      case 0:
-        this.#logRecv("choke");
-        this.peerChoking = true;
-        break;
-      case 1:
-        this.#logRecv("unchoke");
-        this.peerChoking = false;
-        break;
-      case 2:
-        this.#logRecv("interested");
-        this.peerInterested = true;
-        break;
-      case 3:
-        this.#logRecv("not interested");
-        this.peerInterested = false;
-        break;
-      case 4:
-        this.#logRecv("have");
-        break;
-      case 5:
-        this.bitfield = new Bitfield(message.subarray(5));
-        this.#logRecv(
-          `bitfield: ${Math.round(this.bitfield.progress)}% complete`
-        );
-        break;
-      case 6:
-        this.#logRecv("request");
-        break;
-      case 7:
-        this.#downloadPieceBlock(message);
-        break;
-      case 8:
-        this.#logRecv("cancel");
-        break;
-      case 9:
-        this.#logRecv("port");
-        break;
-      default:
-        this.#logRecv("unknown", id);
-    }
-  }
-
-  #downloadPieceBlock(message: Buffer): void {
+  #downloadPieceBlock(
+    message: Buffer,
+    onPieceBlock: CallbackArgs["onPieceBlock"]
+  ): void {
     // piece: <len=0009+X><id=7><index><begin><block>
     const pieceIndex = message.readUInt32BE(5);
     const begin = message.readUInt32BE(9);
     const block = Buffer.from(message, 13);
-    this.#logRecv(`piece ${pieceIndex}.${begin / PIECE_SIZE}`);
+    this.#logRecv(`piece ${pieceIndex}.${begin / this.blockSize}`);
+    onPieceBlock({ piece: pieceIndex, begin }, block);
   }
 
   #accumulateMessages(messageChunk: Buffer): Buffer[] {
@@ -255,7 +252,7 @@ export class PeerState {
     while (true) {
       if (this.nextMessage.length < 4) return messages;
       const payloadLength = this.nextMessage.readUInt32BE(0);
-      if (payloadLength > 2 * PIECE_SIZE) {
+      if (payloadLength > 2 * this.blockSize) {
         throw new Error(
           `Payload too large (len: ${payloadLength}, msg: ${this.nextMessage.toString(
             "ascii"
