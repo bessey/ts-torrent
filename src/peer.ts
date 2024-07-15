@@ -189,11 +189,7 @@ export class PeerState {
       const pstrlen = this.nextMessage.readUInt8(0);
       const length = 49 + pstrlen;
       this.status = "handshaken";
-      if (this.nextMessage.length === length) {
-        this.nextMessage = Buffer.from([]);
-      } else {
-        this.nextMessage = Buffer.from(this.nextMessage, length);
-      }
+      this.#clearLastMessage(length);
       return null;
     }
 
@@ -203,13 +199,17 @@ export class PeerState {
     if (this.nextMessage.length < length) return null;
 
     const currentMessage = Buffer.from(this.nextMessage, 0, length);
-    if (this.nextMessage.length === length) {
-      this.nextMessage = Buffer.from([]);
-    } else {
-      this.nextMessage = Buffer.from(this.nextMessage, length);
-    }
+    this.#clearLastMessage(length);
 
     return currentMessage;
+  }
+
+  #clearLastMessage(lastMessageLength: number): void {
+    if (this.nextMessage.length === lastMessageLength) {
+      this.nextMessage = Buffer.from([]);
+    } else {
+      this.nextMessage = Buffer.from(this.nextMessage, lastMessageLength);
+    }
   }
 
   #log(message: string, ...rest: any): void {
