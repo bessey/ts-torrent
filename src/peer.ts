@@ -61,6 +61,7 @@ export class PeerState {
     onConnecting();
 
     client.on("data", (messageChunk) => {
+      console.log("data, len:", messageChunk.length);
       this.#processMessageChunk(messageChunk);
     });
     client.on("error", (err) => {
@@ -138,7 +139,7 @@ export class PeerState {
           this.#log("have");
           break;
         case 5:
-          this.bitfield = new Bitfield(Buffer.from(message, 5));
+          this.bitfield = new Bitfield(message.subarray(5));
           this.#log(
             `bitfield: ${Math.round(this.bitfield.progress)}% complete`
           );
@@ -184,6 +185,9 @@ export class PeerState {
     // Handshake is a special case
     if (this.status !== "handshaken") {
       const pstrlen = this.nextMessage.readUInt8(0);
+      const pstr = this.nextMessage.subarray(1, pstrlen + 1).toString("ascii");
+      if (pstr !== "BitTorrent protocol")
+        throw new Error(`Unknown protocol: ${pstr} ${pstr.length}`);
       const length = 49 + pstrlen;
       this.status = "handshaken";
       this.#clearLastMessage(length);
@@ -191,22 +195,33 @@ export class PeerState {
     }
 
     const messages = [];
+
     while (true) {
       if (this.nextMessage.length < 4) return messages;
-      const payloadlength = this.nextMessage.readUInt32BE(0);
-      const length = payloadlength + 4;
+      const payloadLength = this.nextMessage.readUInt32BE(0);
+      if (payloadLength > 2 * PIECE_SIZE) {
+        throw new Error(
+          `Payload too large (len: ${payloadLength}, msg: ${this.nextMessage.toString(
+            "ascii"
+          )})`
+        );
+      }
+
+      const length = payloadLength + 4;
       if (this.nextMessage.length < length) return messages;
 
-      messages.push(Buffer.from(this.nextMessage, 0, length));
+      messages.push(this.nextMessage.subarray(0, length));
       this.#clearLastMessage(length);
     }
   }
 
   #clearLastMessage(lastMessageLength: number): void {
+    if (this.nextMessage.length < lastMessageLength)
+      throw new Error("Last message shorter than length");
     if (this.nextMessage.length === lastMessageLength) {
       this.nextMessage = Buffer.from([]);
     } else {
-      this.nextMessage = Buffer.from(this.nextMessage, lastMessageLength);
+      this.nextMessage = this.nextMessage.subarray(lastMessageLength);
     }
   }
 
