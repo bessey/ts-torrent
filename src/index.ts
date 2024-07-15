@@ -25,7 +25,7 @@ export async function main(): Promise<Promise<void>> {
     peerId: randomBytes(20),
     blockSize: 2 ** 14,
     desiredPeers: 30,
-    desiredPiecesInFlight: 1,
+    desiredPiecesInFlight: 5,
     desiredBlocksInFlight: 5,
   };
 
