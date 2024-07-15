@@ -13,19 +13,9 @@ export async function maintainPeerConnections(torrentState: TorrentState) {
     peerConn.connect({
       config: torrentState.config,
       metainfo: torrentState.metainfo,
-      onConnecting() {
-        torrentState.activePeers.add(peerConn);
-        torrentState.availablePeers.delete(peerConn) ||
-          torrentState.ignoredPeers.delete(peerConn);
-      },
-      onDisconnect() {
-        if (torrentState.activePeers.delete(peerConn))
-          torrentState.availablePeers.add(peerConn);
-      },
-      onError() {
-        torrentState.activePeers.delete(peerConn);
-        torrentState.ignoredPeers.add(peerConn);
-      },
+      onConnecting: () => torrentState.peerConnected(peerConn),
+      onDisconnect: () => torrentState.peerDisconnected(peerConn),
+      onError: () => torrentState.peerErrored(peerConn),
     });
     i++;
   }

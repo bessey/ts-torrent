@@ -37,6 +37,20 @@ export class TorrentState {
     const emptyBitfield = Buffer.alloc(metainfo.info.pieces.length);
     this.bitfield = new Bitfield(emptyBitfield);
   }
+
+  peerConnected(peer: PeerState) {
+    this.activePeers.add(peer);
+    this.availablePeers.delete(peer) || this.ignoredPeers.delete(peer);
+  }
+
+  peerDisconnected(peer: PeerState) {
+    if (this.activePeers.delete(peer)) this.availablePeers.add(peer);
+  }
+
+  peerErrored(peer: PeerState) {
+    this.activePeers.delete(peer);
+    this.ignoredPeers.add(peer);
+  }
 }
 export async function main(): Promise<Promise<void>> {
   const config: Config = {
