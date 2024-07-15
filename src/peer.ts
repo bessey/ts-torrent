@@ -259,6 +259,7 @@ export class PeerState {
         .toString("ascii");
       this.#logRecv(`handshake ${peerId}`);
       const length = 49 + pstrlen;
+      if (this.nextMessage.length < length) return [];
       this.status = "handshaken";
       this.#clearLastMessage(length);
       return [];
