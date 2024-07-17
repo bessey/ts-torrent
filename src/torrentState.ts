@@ -44,15 +44,12 @@ export class TorrentState {
       blockRequest,
       data
     );
-    const peer = this.requestsInFlight.get(blockRequest.piece);
-    peer?.blocksInFlight
-      .get(blockRequest.piece)
-      ?.delete(blockRequest.begin / this.config.blockSize);
     if (pieceComplete) {
       console.log(`piece ${blockRequest.piece} complete`);
       this.bitfield.set(blockRequest.piece);
       this.requestsInFlight.delete(blockRequest.piece);
     }
+    return true;
   }
 }
 

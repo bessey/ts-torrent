@@ -14,7 +14,7 @@ export interface CallbackArgs {
   onConnecting: () => void;
   onDisconnect: () => void;
   onError: (err: Error) => void;
-  onPieceBlock: (blockRequest: BlockRequest, data: Buffer) => Promise<void>;
+  onPieceBlock: (blockRequest: BlockRequest, data: Buffer) => Promise<boolean>;
 }
 
 export class PeerState {
@@ -245,7 +245,13 @@ export class PeerState {
     const begin = message.readUInt32BE(9);
     const block = Buffer.from(message, 13);
     this.#logRecv(`piece ${pieceIndex}.${begin / this.blockSize}`);
-    await onPieceBlock({ piece: pieceIndex, begin }, block);
+    const pieceProcessedOk = await onPieceBlock(
+      { piece: pieceIndex, begin },
+      block
+    );
+    if (pieceProcessedOk) {
+      this.blocksInFlight.get(pieceIndex)?.delete(begin / this.blockSize);
+    }
   }
 
   #accumulateMessages(messageChunk: Buffer): Buffer[] {
