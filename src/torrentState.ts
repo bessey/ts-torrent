@@ -31,6 +31,15 @@ export class TorrentState {
     this.bitfield = new Bitfield(metainfo.info.pieceHashes.length);
   }
 
+  async hydrateBitfield() {
+    await this.fileManager.hydratePieceProgressFromFile();
+    this.bitfield = this.fileManager.bitfield();
+    console.log(
+      `Restoring progress: ${this.bitfield.totalProgress().toFixed(1)}%`
+    );
+    return this.bitfield;
+  }
+
   peerConnected(peer: PeerState) {
     this.activePeers.add(peer);
     this.availablePeers.delete(peer) || this.ignoredPeers.delete(peer);

@@ -15,6 +15,11 @@ export class Bitfield {
     this.progress = this.totalProgress();
   }
 
+  fill() {
+    this.bits.fill(0xff);
+    return this;
+  }
+
   has(index: number): boolean {
     const byteIndex = Math.floor(index / 8);
     const bitIndex = index % 8;

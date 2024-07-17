@@ -20,7 +20,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 export async function main(): Promise<Promise<void>> {
   const config: Config = {
     filePath: "./test/debian-12.6.0-arm64-netinst.iso.torrent",
-    downloadsDirectory: "./downloads/",
+    downloadsDir: "./downloads",
     port: 6881,
     peerId: randomBytes(20),
     blockSize: 2 ** 14,
@@ -32,6 +32,7 @@ export async function main(): Promise<Promise<void>> {
   const data = await fs.readFile(config.filePath);
   const metainfo = buildMetainfo(data);
   const torrentState = new TorrentState(config, metainfo);
+  await torrentState.hydrateBitfield();
   const trackerData = await getTrackerResponse(config, metainfo);
   console.log(trackerData);
   torrentState.availablePeers = new Set(

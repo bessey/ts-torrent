@@ -4,7 +4,7 @@ export type BlockOffset = number;
 
 export interface Config {
   filePath: string;
-  downloadsDirectory: string;
+  downloadsDir: string;
   blockSize: number;
   port: number;
   peerId: Buffer;
