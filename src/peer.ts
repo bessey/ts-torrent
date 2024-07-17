@@ -1,4 +1,5 @@
 import net from "node:net";
+
 import { Bitfield } from "#src/Bitfield.js";
 import type { Metainfo } from "#src/torrentFile.js";
 import type { PeerInfo } from "#src/tracker.js";
@@ -9,6 +10,7 @@ import type {
   Config,
   PieceIndex,
 } from "#src/types.js";
+import { TorrentMessageChunked } from "./TorrentMessageChunked.js";
 
 export interface CallbackArgs {
   onConnecting: () => void;
@@ -52,19 +54,19 @@ export class PeerState {
     callbacks: CallbackArgs
   ): Promise<net.Socket> {
     const client = new net.Socket();
+    const chunkByMessage = new TorrentMessageChunked((logMessage) =>
+      this.#logRecv(logMessage)
+    );
+    chunkByMessage.on("data", (message) =>
+      this.#processMessage(message, callbacks)
+    );
+
+    client.pipe(chunkByMessage);
 
     client.connect(this.peer.port, this.peer.ip, () => {
       this.#log("connected");
       this.status = "connected";
       this.sendHandshake(config, metainfo);
-    });
-    this.#log("connecting");
-    this.status = "connecting";
-    callbacks.onConnecting();
-
-    client.on("data", async (messageChunk) => {
-      const messages = this.#accumulateMessages(messageChunk);
-      await this.#processMessages(messages, callbacks);
     });
     client.on("error", (err) => {
       this.#log("error", err);
@@ -81,6 +83,9 @@ export class PeerState {
       client.destroy();
     });
 
+    this.#log("connecting");
+    this.status = "connecting";
+    callbacks.onConnecting();
     this.client = client;
     return client;
   }
@@ -187,57 +192,55 @@ export class PeerState {
     return blockSet;
   }
 
-  async #processMessages(
-    messages: Buffer[],
+  async #processMessage(
+    message: Buffer,
     callbacks: CallbackArgs
   ): Promise<void> {
-    for (const message of messages) {
-      if (message.length - 4 === 0) {
-        this.#logRecv("keep-alive");
-        return;
-      }
-      const id = message.readUInt8(4);
-      switch (id) {
-        case 0:
-          this.#logRecv("choke");
-          this.peerChoking = true;
-          break;
-        case 1:
-          this.#logRecv("unchoke");
-          this.peerChoking = false;
-          break;
-        case 2:
-          this.#logRecv("interested");
-          this.peerInterested = true;
-          break;
-        case 3:
-          this.#logRecv("not interested");
-          this.peerInterested = false;
-          break;
-        case 4:
-          this.#logRecv("have");
-          break;
-        case 5:
-          this.bitfield = new Bitfield(message.subarray(5));
-          this.#logRecv(
-            `bitfield: ${Math.round(this.bitfield.progress)}% complete`
-          );
-          break;
-        case 6:
-          this.#logRecv("request");
-          break;
-        case 7:
-          await this.#downloadPieceBlock(message, callbacks.onPieceBlock);
-          break;
-        case 8:
-          this.#logRecv("cancel");
-          break;
-        case 9:
-          this.#logRecv("port");
-          break;
-        default:
-          this.#logRecv("unknown", id);
-      }
+    if (message.length - 4 === 0) {
+      this.#logRecv("keep-alive");
+      return;
+    }
+    const id = message.readUInt8(4);
+    switch (id) {
+      case 0:
+        this.#logRecv("choke");
+        this.peerChoking = true;
+        break;
+      case 1:
+        this.#logRecv("unchoke");
+        this.peerChoking = false;
+        break;
+      case 2:
+        this.#logRecv("interested");
+        this.peerInterested = true;
+        break;
+      case 3:
+        this.#logRecv("not interested");
+        this.peerInterested = false;
+        break;
+      case 4:
+        this.#logRecv("have");
+        break;
+      case 5:
+        this.bitfield = new Bitfield(message.subarray(5));
+        this.#logRecv(
+          `bitfield: ${Math.round(this.bitfield.progress)}% complete`
+        );
+        break;
+      case 6:
+        this.#logRecv("request");
+        break;
+      case 7:
+        await this.#downloadPieceBlock(message, callbacks.onPieceBlock);
+        break;
+      case 8:
+        this.#logRecv("cancel");
+        break;
+      case 9:
+        this.#logRecv("port");
+        break;
+      default:
+        this.#logRecv("unknown", id);
     }
   }
 
@@ -256,49 +259,6 @@ export class PeerState {
     );
     if (pieceProcessedOk) {
       this.#blocksInFlight.get(pieceIndex)?.delete(begin / this.blockSize);
-    }
-  }
-
-  #accumulateMessages(messageChunk: Buffer): Buffer[] {
-    this.nextMessage = Buffer.concat([this.nextMessage, messageChunk]);
-
-    // Handshake is a special case
-    if (this.status !== "handshaken") {
-      const pstrlen = this.nextMessage.readUInt8(0);
-      const pstr = this.nextMessage.subarray(1, pstrlen + 1).toString("ascii");
-      if (pstr !== "BitTorrent protocol")
-        throw new Error(`Unknown protocol: ${pstr} ${pstr.length}`);
-      const peerId = this.nextMessage
-        .subarray(pstrlen + 29, pstrlen + 29 + 20)
-        .toString("ascii");
-      this.#logRecv(`handshake ${peerId}`);
-      const length = 49 + pstrlen;
-      if (this.nextMessage.length < length) return [];
-      this.status = "handshaken";
-      this.#clearLastMessage(length);
-      return [];
-    }
-
-    const messages = [];
-
-    while (true) {
-      if (this.nextMessage.length < 4) return messages;
-      const payloadLength = this.nextMessage.readUInt32BE(0);
-      const length = payloadLength + 4;
-      if (this.nextMessage.length < length) return messages;
-
-      messages.push(this.nextMessage.subarray(0, length));
-      this.#clearLastMessage(length);
-    }
-  }
-
-  #clearLastMessage(lastMessageLength: number): void {
-    if (this.nextMessage.length < lastMessageLength)
-      throw new Error("Last message shorter than length");
-    if (this.nextMessage.length === lastMessageLength) {
-      this.nextMessage = Buffer.from([]);
-    } else {
-      this.nextMessage = this.nextMessage.subarray(lastMessageLength);
     }
   }
 

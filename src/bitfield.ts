@@ -46,7 +46,9 @@ export class Bitfield {
   set(index: number): void {
     const byteIndex = Math.floor(index / 8);
     const bitIndex = index % 8;
-    this.bits[byteIndex] |= 1 << (7 - bitIndex);
+    const byte = this.bits[byteIndex];
+    if (byte === undefined) throw new Error("Index out of bounds");
+    this.bits.set([byte | (1 << (7 - bitIndex))], byteIndex);
   }
 
   get byteLength(): number {
