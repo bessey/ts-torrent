@@ -65,8 +65,8 @@ function saturateBlockRequestsForPieces(
   for (const [piece, peer] of pieces.entries()) {
     const blocksInFlight = peer.blocksInFlight(piece);
     const blocksPerPiece = appState.blocksPerPiece;
-    if (blocksInFlight.size >= appState.config.desiredBlocksInFlight) continue;
     for (let blockIndex = 0; blockIndex < blocksPerPiece; blockIndex++) {
+      if (blocksInFlight.size >= appState.config.desiredBlocksInFlight) break;
       if (blocksInFlight.has(blockIndex)) continue;
       if (appState.fileManager.hasPieceBlock(piece, blockIndex)) continue;
       peer.sendRequest(piece, appState.blockOffsetForIndex(blockIndex));
