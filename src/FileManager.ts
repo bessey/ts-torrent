@@ -24,6 +24,10 @@ export class FileManager {
     return pieceProgress.blocks.remaining(this.config.desiredBlocksInFlight);
   }
 
+  hasPieceBlock(piece: PieceIndex, blockIndex: number): boolean {
+    return this.pieceProgress[piece]?.blocks.has(blockIndex) || false;
+  }
+
   async writePieceBlock(
     blockRequest: BlockRequest,
     data: Buffer

@@ -1,7 +1,8 @@
 import type { TorrentState } from "#src/torrentState.js";
 import type { PeerState } from "./peer.js";
+import type { PieceIndex } from "./types.js";
 
-export async function maintainPeerConnections(torrentState: TorrentState) {
+export function maintainPeerConnections(torrentState: TorrentState) {
   const neededPeers =
     torrentState.config.desiredPeers - torrentState.activePeers.size;
   if (neededPeers <= 0) return;
@@ -24,14 +25,19 @@ export async function maintainPeerConnections(torrentState: TorrentState) {
   );
 }
 
-export async function saturatePieceBlockRequests(appState: TorrentState) {
+export function saturatePieceBlockRequests(appState: TorrentState) {
+  const piecesInFlight = saturatePieces(appState);
+  saturateBlockRequestsForPieces(appState, piecesInFlight);
+}
+
+function saturatePieces(appState: TorrentState): Map<PieceIndex, PeerState> {
   const pieceCapacity =
     appState.config.desiredPiecesInFlight - appState.requestsInFlight.size;
   for (let i = 0; i < pieceCapacity; i++) {
     const pieces = appState.bitfield.remaining();
     if (pieces.length === 0) {
       console.log("Are we done?");
-      return;
+      return new Map();
     }
     let peerWithPiece: PeerState | undefined;
     const inFlightPieces = [...appState.requestsInFlight.keys()];
@@ -44,25 +50,26 @@ export async function saturatePieceBlockRequests(appState: TorrentState) {
     });
     if (nextUnstartedPiece === undefined || peerWithPiece === undefined) {
       console.log("No one has remaining pieces");
-      return;
+      return new Map();
     }
     appState.requestsInFlight.set(nextUnstartedPiece, peerWithPiece);
     peerWithPiece.sendInterested();
   }
-  // ensure enough blocks are in flight
-  // if not, request available more blocks from FileManager for given piece
-  for (const [piece, peer] of appState.requestsInFlight.entries()) {
-    const blocksPerPiece = Math.ceil(
-      appState.metainfo.info.pieceLength / appState.config.blockSize
-    );
+  return appState.requestsInFlight;
+}
+
+function saturateBlockRequestsForPieces(
+  appState: TorrentState,
+  pieces: Map<PieceIndex, PeerState>
+) {
+  for (const [piece, peer] of pieces.entries()) {
+    const blocksInFlight = peer.blocksInFlight(piece);
+    const blocksPerPiece = appState.blocksPerPiece;
+    if (blocksInFlight.size >= appState.config.desiredBlocksInFlight) continue;
     for (let blockIndex = 0; blockIndex < blocksPerPiece; blockIndex++) {
-      const blocksInFlight = peer.blocksInFlight.get(piece) || new Set();
-      if (blocksInFlight.size >= appState.config.desiredBlocksInFlight) break;
       if (blocksInFlight.has(blockIndex)) continue;
-      if (appState.fileManager.pieceProgress[piece]?.blocks.has(blockIndex))
-        continue;
-      const begin = blockIndex * appState.config.blockSize;
-      peer.sendRequest(piece, begin);
+      if (appState.fileManager.hasPieceBlock(piece, blockIndex)) continue;
+      peer.sendRequest(piece, appState.blockOffsetForIndex(blockIndex));
     }
   }
 }

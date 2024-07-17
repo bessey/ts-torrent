@@ -29,7 +29,7 @@ export class PeerState {
   status: "connecting" | "connected" | "handshaken" | "disconnected";
   bitfield: Bitfield | null;
   nextMessage: Buffer;
-  blocksInFlight: Map<PieceIndex, Set<BlockIndex>>;
+  #blocksInFlight: Map<PieceIndex, Set<BlockIndex>>;
 
   constructor(config: Config, peer: PeerInfo) {
     this.blockSize = config.blockSize;
@@ -43,7 +43,7 @@ export class PeerState {
     this.status = "disconnected";
     this.bitfield = null;
     this.nextMessage = Buffer.from([]);
-    this.blocksInFlight = new Map();
+    this.#blocksInFlight = new Map();
   }
 
   async connect(
@@ -173,13 +173,18 @@ export class PeerState {
     const blockIndex = begin / this.blockSize;
 
     this.#logSend(`request ${pieceIndex}.${blockIndex}`);
-    const blocksInFlightForPiece = this.blocksInFlight.get(pieceIndex);
-    if (blocksInFlightForPiece === undefined) {
-      this.blocksInFlight.set(pieceIndex, new Set([blockIndex]));
-    } else {
-      blocksInFlightForPiece.add(blockIndex);
-    }
+    const blocksInFlightForPiece = this.blocksInFlight(pieceIndex);
+    blocksInFlightForPiece.add(blockIndex);
     return this.client.write(message);
+  }
+
+  blocksInFlight(pieceIndex: PieceIndex): Set<BlockIndex> {
+    let blockSet = this.#blocksInFlight.get(pieceIndex);
+    if (blockSet === undefined) {
+      blockSet = new Set();
+      this.#blocksInFlight.set(pieceIndex, blockSet);
+    }
+    return blockSet;
   }
 
   async #processMessages(
@@ -250,7 +255,7 @@ export class PeerState {
       block
     );
     if (pieceProcessedOk) {
-      this.blocksInFlight.get(pieceIndex)?.delete(begin / this.blockSize);
+      this.#blocksInFlight.get(pieceIndex)?.delete(begin / this.blockSize);
     }
   }
 
@@ -279,14 +284,6 @@ export class PeerState {
     while (true) {
       if (this.nextMessage.length < 4) return messages;
       const payloadLength = this.nextMessage.readUInt32BE(0);
-      if (payloadLength > 2 * this.blockSize) {
-        throw new Error(
-          `Payload too large (len: ${payloadLength}, msg: ${this.nextMessage.toString(
-            "ascii"
-          )})`
-        );
-      }
-
       const length = payloadLength + 4;
       if (this.nextMessage.length < length) return messages;
 

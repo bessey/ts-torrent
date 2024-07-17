@@ -1,7 +1,13 @@
 import { Bitfield } from "#src/Bitfield.js";
 import type { PeerState } from "#src/peer.js";
 import type { Metainfo, TFile } from "#src/torrentFile.js";
-import type { BlockRequest, Config } from "#src/types.js";
+import type {
+  BlockIndex,
+  BlockOffset,
+  BlockRequest,
+  Config,
+  PieceIndex,
+} from "#src/types.js";
 import { FileManager } from "./FileManager.js";
 
 export class TorrentState {
@@ -11,7 +17,7 @@ export class TorrentState {
   activePeers: Set<PeerState>;
   ignoredPeers: Set<PeerState>;
   bitfield: Bitfield;
-  requestsInFlight: Map<number, PeerState>;
+  requestsInFlight: Map<PieceIndex, PeerState>;
   fileManager: FileManager;
 
   constructor(config: Config, metainfo: Metainfo) {
@@ -37,6 +43,14 @@ export class TorrentState {
   peerErrored(peer: PeerState) {
     this.activePeers.delete(peer);
     this.ignoredPeers.add(peer);
+  }
+
+  get blocksPerPiece() {
+    return this.metainfo.info.pieceLength / this.config.blockSize;
+  }
+
+  blockOffsetForIndex(block: BlockIndex): BlockOffset {
+    return block * this.config.blockSize;
   }
 
   async receivedPieceBlock(blockRequest: BlockRequest, data: Buffer) {
