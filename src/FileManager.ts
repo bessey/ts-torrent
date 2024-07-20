@@ -1,10 +1,19 @@
-import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import { Bitfield } from "#src/Bitfield.js";
 import type { Metainfo, TFile } from "#src/torrentFile.js";
 import type { BlockRequest, Config, PieceIndex } from "#src/types.js";
-import type { PartialFileWrite, PieceProgress } from "./torrentState.js";
 import { sha1Hash } from "./utils.js";
+
+interface PieceProgress {
+  status: "missing" | "in-progress" | "complete";
+  blocks: Bitfield;
+}
+
+interface PartialFileWrite {
+  file: TFile;
+  offset: number;
+  data: Buffer;
+}
 
 export class FileManager {
   config: Config;

@@ -1,6 +1,6 @@
-import type { TorrentState } from "#src/torrentState.js";
-import type { PeerState } from "./peer.js";
-import type { PieceIndex } from "./types.js";
+import type { TorrentState } from "#src/TorrentState.js";
+import type { PeerState } from "./PeerState.js";
+import type { BlockRequest, PieceIndex } from "./types.js";
 
 export function maintainPeerConnections(torrentState: TorrentState) {
   const neededPeers =
@@ -15,7 +15,7 @@ export function maintainPeerConnections(torrentState: TorrentState) {
       onConnecting: () => torrentState.peerConnected(peerConn),
       onDisconnect: () => torrentState.peerDisconnected(peerConn),
       onError: () => torrentState.peerErrored(peerConn),
-      onPieceBlock: (blockRequest, data) =>
+      onPieceBlock: (blockRequest: BlockRequest, data: Buffer) =>
         torrentState.receivedPieceBlock(blockRequest, data),
     });
     i++;

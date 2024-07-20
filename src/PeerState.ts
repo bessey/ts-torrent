@@ -1,6 +1,7 @@
 import net from "node:net";
 
 import { Bitfield } from "#src/Bitfield.js";
+import { TorrentMessageChunked } from "#src/TorrentMessageChunked.js";
 import type { Metainfo } from "#src/torrentFile.js";
 import type { PeerInfo } from "#src/tracker.js";
 import type {
@@ -10,7 +11,6 @@ import type {
   Config,
   PieceIndex,
 } from "#src/types.js";
-import { TorrentMessageChunked } from "./TorrentMessageChunked.js";
 
 export interface CallbackArgs {
   onConnecting: () => void;
@@ -48,11 +48,11 @@ export class PeerState {
     this.#blocksInFlight = new Map();
   }
 
-  async connect(
+  connect(
     config: Config,
     metainfo: Metainfo,
     callbacks: CallbackArgs
-  ): Promise<net.Socket> {
+  ): net.Socket {
     const client = new net.Socket();
     const chunkByMessage = new TorrentMessageChunked((logMessage) =>
       this.#logRecv(logMessage)

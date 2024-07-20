@@ -1,6 +1,6 @@
 import { Bitfield } from "#src/Bitfield.js";
-import type { PeerState } from "#src/peer.js";
-import type { Metainfo, TFile } from "#src/torrentFile.js";
+import type { PeerState } from "#src/PeerState.js";
+import type { Metainfo } from "#src/torrentFile.js";
 import type {
   BlockIndex,
   BlockOffset,
@@ -74,15 +74,4 @@ export class TorrentState {
     }
     return true;
   }
-}
-
-export interface PieceProgress {
-  status: "missing" | "in-progress" | "complete";
-  blocks: Bitfield;
-}
-
-export interface PartialFileWrite {
-  file: TFile;
-  offset: number;
-  data: Buffer;
 }

@@ -6,11 +6,11 @@ import {
   saturatePieceBlockRequests,
 } from "#src//algorithm.js";
 import { every } from "#src//utils.js";
-import { PeerState } from "#src/peer.js";
+import { PeerState } from "#src/PeerState.js";
 import { buildMetainfo } from "#src/torrentFile.js";
 import { getTrackerResponse } from "#src/tracker.js";
 import type { Config } from "#src/types.js";
-import { TorrentState } from "./torrentState.js";
+import { TorrentState } from "./TorrentState.js";
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   program.parse();
