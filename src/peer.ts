@@ -205,6 +205,7 @@ export class PeerState {
       case 0:
         this.#logRecv("choke");
         this.peerChoking = true;
+        this.#blocksInFlight.clear();
         break;
       case 1:
         this.#logRecv("unchoke");

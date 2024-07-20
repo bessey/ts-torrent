@@ -24,7 +24,7 @@ export async function main(): Promise<Promise<void>> {
     port: 6881,
     peerId: randomBytes(20),
     blockSize: 2 ** 14,
-    desiredPeers: 30,
+    desiredPeers: 40,
     desiredPiecesInFlight: 5,
     desiredBlocksInFlight: 5,
   };

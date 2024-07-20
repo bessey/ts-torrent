@@ -43,8 +43,8 @@ function saturatePieces(appState: TorrentState): Map<PieceIndex, PeerState> {
     const inFlightPieces = [...appState.requestsInFlight.keys()];
     const nextUnstartedPiece = pieces.find((piece) => {
       if (inFlightPieces.includes(piece)) return false;
-      peerWithPiece = [...appState.activePeers.values()].find((p) =>
-        p.bitfield?.has(piece)
+      peerWithPiece = [...appState.activePeers.values()].find(
+        (p) => !p.peerChoking && p.bitfield?.has(piece)
       );
       return !!peerWithPiece;
     });
