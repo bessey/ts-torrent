@@ -251,7 +251,7 @@ export class PeerState {
     // piece: <len=0009+X><id=7><index><begin><block>
     const pieceIndex = message.readUInt32BE(5);
     const begin = message.readUInt32BE(9);
-    const block = Buffer.from(message, 13);
+    const block = message.subarray(13);
     this.#logRecv(`piece ${pieceIndex}.${begin / this.blockSize}`);
     const pieceProcessedOk = await onPieceBlock(
       { piece: pieceIndex, begin },

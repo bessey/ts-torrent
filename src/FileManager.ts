@@ -25,11 +25,11 @@ export class FileManager {
       pieceIndex < this.metainfo.info.pieceHashes.length;
       pieceIndex++
     ) {
-      const verified = await this.verifyPieceFromFile(pieceIndex);
+      const valid = await this.verifyPieceFromFile(pieceIndex);
       const allOnes = new Bitfield(
         Math.ceil(this.metainfo.info.pieceLength / this.config.blockSize)
       ).fill();
-      if (verified)
+      if (valid)
         this.pieceProgress.set(pieceIndex, {
           status: "complete",
           blocks: allOnes,
@@ -85,19 +85,20 @@ export class FileManager {
     for (const { file, offset, data } of fileWrites) {
       const filePath = [this.config.downloadsDir, ...file.path].join("/");
 
-      const fd = await fs.open(filePath, "w");
+      const fd = await fs.open(filePath, "a");
       fd.write(data, 0, data.length, offset);
       fd.close();
     }
     if (pieceProgress.blocks.hasAllSet()) {
-      if (!this.verifyPieceFromFile(blockRequest.piece))
-        throw new Error("Piece verification failed");
+      const valid = await this.verifyPieceFromFile(blockRequest.piece);
+      if (!valid) throw new Error("Piece verification failed");
       return true;
     }
     return false;
   }
 
   #fileWrites(blockRequest: BlockRequest, data: Buffer): PartialFileWrite[] {
+    const pieceOffset = blockRequest.piece * this.metainfo.info.pieceLength;
     let totalOffset = 0;
     const firstFile = this.files.find((f) => {
       const fileEnd = f.length + totalOffset;
@@ -116,7 +117,7 @@ export class FileManager {
     return [
       {
         file: firstFile,
-        offset: blockRequest.begin - totalOffset,
+        offset: pieceOffset + blockRequest.begin - totalOffset,
         data: data.subarray(0, endOfFileOrAllOfBlock),
       },
     ];
